@@ -4,12 +4,13 @@ from setuptools import setup
 
 setup(
     name='thrustrig',
-	version='0.0.1',
+	version='0.0.2',
 	packages=['thrustrig'],
 	install_requires=[
 		'numpy',
 		'pandas',
 		'dash',
+		'dash-bootstrap-components',
 		'pyserial'
 	],
 	entry_points={

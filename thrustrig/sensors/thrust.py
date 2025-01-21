@@ -1,10 +1,10 @@
 import serial
 import time
 
-class TemperatureSensor:
+class ThrustSensor:
 
 	n_vals = 1
-    
+
 	def __init__(self, port, baudrate):
 		self.port = port
 		self.baudrate = baudrate
@@ -24,10 +24,10 @@ class TemperatureSensor:
 			s = self.ser.readline().decode().strip()
 		except UnicodeDecodeError:
 			return None
-		if len(s) == 0 or s[0] != 'T':
+		if len(s) == 0 or s[0] != 'H':
 			return None
 		try:
-			val = float(s[1:]) / 1000
+			val = (float(s[1:]) - 930) / 179
 		except ValueError:
 			pass
 		return val

@@ -1,0 +1,48 @@
+h1 {
+    text-align: center;
+    color: #6200ee;
+    font-family: Arial;
+}
+
+.graph-panel {
+    width: 100%;
+    display: flex;
+    flex-flow: row wrap;
+    justify-content: space-around;
+    align-items: flex-start;
+	row-gap: 10px;
+}
+
+.graph {
+	width: 30%;
+	height: 30vh;
+    background-color: #f9f9f9;
+    border: 1px solid #aaaaaa;
+    box-shadow: 5px 5px rgba(0, 0, 0, 0.1);
+}
+
+.fancy-button {
+    display: inline-block;
+    margin: 0 10px;
+    font-size: 20px;
+    background-color: #6200ee;
+	z-index: 1;
+    color: white;
+    border-radius: 5px;
+    border: none;
+    box-shadow: 4px 4px rgba(0, 0, 0, 0.1);
+}
+
+.fancy-button:hover {
+	background-color: #110088;
+    box-shadow: 2px 2px rgba(0, 0, 0, 0.1);
+}
+
+.fancy-button:active {
+    background-color: #110088;
+    box-shadow: 0 0 rgba(0, 0, 0, 0.1);
+}
+
+.hide {
+    display: none;
+}

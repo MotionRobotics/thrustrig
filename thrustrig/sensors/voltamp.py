@@ -2,10 +2,16 @@ import serial
 import time
 
 class VoltAmpSensor:
+
+	n_vals = 3
+
 	def __init__(self, port, baudrate):
 		self.port = port
 		self.baudrate = baudrate
-		self.start()
+		self.ser = None
+  
+	def enabled(self):
+		return self.ser is not None
 
 	def start(self):
 		self.ser = serial.Serial(self.port, self.baudrate)
@@ -37,6 +43,8 @@ class VoltAmpSensor:
 		return voltage, current, temperature
 
 	def flush(self):
+		if self.ser is None:
+			return
 		self.ser.flushInput()
 		self.ser.flushOutput()
 
