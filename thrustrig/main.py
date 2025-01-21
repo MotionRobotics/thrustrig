@@ -1,10 +1,8 @@
-import plotly.subplots
-from .sensors import TemperatureSensor, VoltAmpSensor, ThrustSensor
-
 import threading
 import datetime
 import time
 import os
+import sys
 import serial
 
 import numpy as np
@@ -14,8 +12,13 @@ import dash
 from dash import Dash, dcc, html, Input, Output, State, ctx
 import dash_bootstrap_components as dbc	
 import plotly
+import plotly.subplots
+
+from .sensors import TemperatureSensor, VoltAmpSensor, ThrustSensor
+from .pwm_driver import PWMDriver
 	
 sensors = []
+pwmdriver = None
 collect_thread = None
 columns = ['Timestamp', 'Coil Temperature (C)', 'Voltage (V)', 'Current (A)', 'Batt Temperature (C)', 'Thrust (N)']
 data = []
@@ -30,10 +33,23 @@ app.layout = html.Div([
 		html.Button('Start', id='start-stop', n_clicks=0, className='fancy-button'),
 		html.Button('Save', id='save', n_clicks=0, className='fancy-button'),
 		html.Button('Config', id='cfg-btn', n_clicks=0, className='fancy-button'),
+		html.Label('', id='data-mem')
 	], style={'display': 'inline-block', 'width': '100%', 'text-align': 'center'}),
 	dcc.Interval(id='interval', interval=100, n_intervals=0, disabled=True),
 	dcc.Download(id='download'),
 	html.Br(),
+	html.Br(),
+	dbc.Row([
+		dbc.Col(html.Label('PWM Value: '), style={'text-align': 'right'}),
+		dbc.Col(dcc.Slider(id='pwm-slider', min=0, max=200, step=1, value=0, marks={
+				0: '0',
+				50: '50',
+				100: '100',
+				150: '150',
+				200: '200',
+			}, disabled=True)),
+		dbc.Col(html.Label('0', id='pwm-val', style={'display': 'inline-block', 'margin-left': '10px'})),
+	], align='center'),
 	html.Br(),
 	html.Div([
 		dcc.Graph(id='tempgraph', className='graph'),
@@ -74,6 +90,16 @@ app.layout = html.Div([
 				html.Br(),
 				html.Label('Baudrate: '),
 				dcc.Input(id='thrustbaudrate', type='number', value=115200),
+    
+				html.H3('PWM Driver', style={'margin-top': '20px'}),
+				html.Br(),
+				dcc.Checklist(['Enable'], ['Enable'], id='pwm-enable'),
+				html.Br(),
+				html.Label('Port: '),
+				dcc.Input(id='pwmdriverport', type='text', value='/dev/ttyUSB3'),
+				html.Br(),
+				html.Label('Baudrate: '),
+				dcc.Input(id='pwmdriverbaudrate', type='number', value=115200),
 			]),
 			dbc.ModalFooter([
 				html.Button('Ok', id='ok-config', n_clicks=0, className='fancy-button'),
@@ -99,6 +125,9 @@ app.layout = html.Div([
     ),
 ])
 
+with open('/tmp/tmp.csv', 'w') as f:
+	f.write(', '.join(columns) + '\n')
+
 stop_thread = False
 def collect_data():
 	global sensors, data, stop_thread
@@ -118,6 +147,12 @@ def collect_data():
 			continue
 		with data_lock:
 			data.append([timestamp] + readings)
+			if len(data) > 1200:
+				with open('/tmp/tmp.csv', 'a') as f:
+					arch = data[:200]
+					data = data[200:]
+					for line in arch:
+						f.write(', '.join(['' if val is None else str(val) for val in line]) + '\n')
 		for sensor in sensors: sensor.flush()
 		time.sleep(0.01)
 		
@@ -126,6 +161,9 @@ def collect_data():
 	Output('start-stop', 'children'),
 	Output('cfg-btn', 'className'),
 	Output('interval', 'disabled'),
+	Output('pwm-slider', 'disabled'),
+	Output('pwm-slider', 'value', allow_duplicate=True),
+	Output('pwm-val', 'children', allow_duplicate=True),
 	Output('error-msg', 'children'),
 	Output('error-modal', 'is_open'),
 	Input('start-stop', 'n_clicks'),
@@ -139,6 +177,9 @@ def collect_data():
 	State('thrust-enable', 'value'),
 	State('thrustport', 'value'),
 	State('thrustbaudrate', 'value'),
+	State('pwm-enable', 'value'),
+	State('pwmdriverport', 'value'),
+	State('pwmdriverbaudrate', 'value'),
 	prevent_initial_call=True
 )
 def start_stop(
@@ -152,12 +193,15 @@ def start_stop(
     battbaudrate,
 	thrustenable,
 	thrustport,
-	thrustbaudrate
+	thrustbaudrate,
+	pwmenable,
+	pwmdriverport,
+	pwmdriverbaudrate
 	):
-	global sensors, collect_thread, data, stop_thread
+	global sensors, collect_thread, data, stop_thread, pwmdriver
 	if ctx.triggered_id == 'ok-error':
 		if ok_err:
-			return 'Start', 'fancy-button', True, '', False
+			return 'Start', 'fancy-button', True, True, 0, '0', '', False
 	if start_stop % 2 == 1:
 		sensors = [
 			TemperatureSensor(tempport, tempbaudrate),
@@ -171,12 +215,16 @@ def start_stop(
 				sensors[1].start()
 			if 'Enable' in thrustenable:
 				sensors[2].start()
+			if 'Enable' in pwmenable:
+				pwmdriver = PWMDriver(pwmdriverport, pwmdriverbaudrate)
+				pwmdriver.start()
 		except serial.SerialException as e:
 			sensors = []
-			return 'Start', 'fancy-button', True, f'Error opening serial port: {e.strerror}', True
+			pwmdriver = None
+			return 'Start', 'fancy-button', True, True, 0, '0', f'Error opening serial port: {e.strerror}', True
 		collect_thread = threading.Thread(target=collect_data)
 		collect_thread.start()
-		return 'Stop', 'hide', False, '', False
+		return 'Stop', 'hide', False, False, 0, '0', '', False
 	else:
 		stop_thread = True
 		if collect_thread is not None:
@@ -185,7 +233,26 @@ def start_stop(
 		stop_thread = False
 		for sensor in sensors: sensor.close()
 		sensors = []
-		return 'Start', 'fancy-button', True, '', False
+		if pwmdriver is not None:
+			pwmdriver.set(0)
+			time.sleep(0.1)
+			pwmdriver.close()
+			del pwmdriver
+			pwmdriver = None
+		return 'Start', 'fancy-button', True, True, 0, '0', '', False
+
+# Callback to update the PWM value
+@app.callback(
+	Output('pwm-slider', 'value'),
+	Output('pwm-val', 'children'),
+	Input('pwm-slider', 'value'),
+)
+def update_pwm(val):
+	global pwmdriver
+	if pwmdriver is None:
+		return 0, '0'
+	pwmdriver.set(val)
+	return val, str(val * 10)
 
 def get_curval(val):
 	if val is None:
@@ -195,48 +262,43 @@ def get_curval(val):
 # Callback to update the graph
 @app.callback(
 	Output('tempgraph', 'figure'),
+	Output('voltgraph', 'figure'),
+	Output('ampgraph', 'figure'),
+	Output('batttempgraph', 'figure'),
+	Output('thrustgraph', 'figure'),
+	Output('data-mem', 'children'),
 	Input('interval', 'n_intervals'),
 )
 def update_tempgraph(id):
 	global sensors, data, data_lock
-	fig = plotly.subplots.make_subplots(rows=1, cols=1)
+	tempfig = plotly.subplots.make_subplots(rows=1, cols=1)
+	voltfig = plotly.subplots.make_subplots(rows=1, cols=1)
+	ampfig = plotly.subplots.make_subplots(rows=1, cols=1)
+	batttempfig = plotly.subplots.make_subplots(rows=1, cols=1)
+	thrustfig = plotly.subplots.make_subplots(rows=1, cols=1)
 	with data_lock:
-		ts = np.array([d[0] for d in data])
-		temps = np.array([d[1] for d in data])
+		if len(data) == 0:
+			ts = np.array([])
+			temps = np.array([])
+			voltages = np.array([])
+			currents = np.array([])
+			batt_temps = np.array([])
+			thrusts = np.array([])
+		else:
+			npd = np.array(data)
+			ts = npd[:, 0]
+			temps = npd[:, 1]
+			voltages = npd[:, 2]
+			currents = npd[:, 3]
+			batt_temps = npd[:, 4]
+			thrusts = npd[:, 5]
 
-	fig.append_trace({
+	tempfig.append_trace({
 		'x': ts,
 		'y': temps,
 		'mode': 'lines',
 		'name': 'Coil Temperature',
 	}, 1, 1)
-	curtemp = '' if len(temps) == 0 else get_curval(temps[-1])
-	fig.update_layout(title=f'Coil Temperature vs Time{curtemp}', xaxis_title='Time', yaxis_title='Coil Temperature (C)', uirevision=0)
-
-	return fig
-
-@app.callback(
-	[Output('voltgraph', 'figure'),
-	Output('ampgraph', 'figure'),
-	Output('batttempgraph', 'figure')],
-	Input('interval', 'n_intervals'),
-)
-def update_battgraph(id):
-	global sensors, data, data_lock
-	voltfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	ampfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	batttempfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	with data_lock:
-		if len(data) == 0:
-			ts = np.array([])
-			voltages = np.array([])
-			currents = np.array([])
-			batt_temps = np.array([])
-		else:
-			ts = np.array(data)[:, 0]
-			voltages = np.array(data)[:, 2]
-			currents = np.array(data)[:, 3]
-			batt_temps = np.array(data)[:, 4]
 
 	voltfig.append_trace({
 		'x': ts,
@@ -256,44 +318,29 @@ def update_battgraph(id):
 		'mode': 'lines',
 		'name': 'Battery Temperature',
 	}, 1, 1)
-	
-	curvolt = '' if len(voltages) == 0 else get_curval(voltages[-1])
-	curamp = '' if len(currents) == 0 else get_curval(currents[-1])
-	curbatttemp = '' if len(batt_temps) == 0 else get_curval(batt_temps[-1])
 
-	voltfig.update_layout(title=f'Voltage vs Time{curvolt}', xaxis_title='Time', yaxis_title='Voltage', uirevision=0)
-	ampfig.update_layout(title=f'Current vs Time{curamp}', xaxis_title='Time', yaxis_title='Current', uirevision=0)
-	batttempfig.update_layout(title=f'Battery Temperature vs Time{curbatttemp}', xaxis_title='Time', yaxis_title='Battery Temperature (C)', uirevision=0)
-
-	return voltfig, ampfig, batttempfig
-
-@app.callback(
-	Output('thrustgraph', 'figure'),
-	Input('interval', 'n_intervals'),
-)
-def update_thrustgraph(id):
-	global sensors, data, data_lock
-	fig = plotly.subplots.make_subplots(rows=1, cols=1)
-	with data_lock:
-		if len(data) == 0:
-			ts = np.array([])
-			thrusts = np.array([])
-		else:
-			ts = np.array(data)[:, 0]
-			thrusts = np.array(data)[:, 5]
-
-	fig.append_trace({
+	thrustfig.append_trace({
 		'x': ts,
 		'y': thrusts,
 		'mode': 'lines',
 		'name': 'Thrust',
 	}, 1, 1)
-
+	
+	curtemp = '' if len(temps) == 0 else get_curval(temps[-1])
+	curvolt = '' if len(voltages) == 0 else get_curval(voltages[-1])
+	curamp = '' if len(currents) == 0 else get_curval(currents[-1])
+	curbatttemp = '' if len(batt_temps) == 0 else get_curval(batt_temps[-1])
 	curthrust = '' if len(thrusts) == 0 else get_curval(thrusts[-1])
- 
-	fig.update_layout(title=f'Thrust vs Time{curthrust}', xaxis_title='Time', yaxis_title='Thrust (N)', uirevision=0)
 
-	return fig
+	voltfig.update_layout(title=f'Voltage vs Time{curvolt}', xaxis_title='Time', yaxis_title='Voltage', uirevision=0)
+	ampfig.update_layout(title=f'Current vs Time{curamp}', xaxis_title='Time', yaxis_title='Current', uirevision=0)
+	batttempfig.update_layout(title=f'Battery Temperature vs Time{curbatttemp}', xaxis_title='Time', yaxis_title='Battery Temperature (C)', uirevision=0)
+	tempfig.update_layout(title=f'Coil Temperature vs Time{curtemp}', xaxis_title='Time', yaxis_title='Coil Temperature (C)', uirevision=0)
+	thrustfig.update_layout(title=f'Thrust vs Time{curthrust}', xaxis_title='Time', yaxis_title='Thrust (N)', uirevision=0)
+ 
+	with data_lock:
+		mem_used = sys.getsizeof(data) / 1024
+	return tempfig, voltfig, ampfig, batttempfig, thrustfig, f'Memory used: {mem_used:.2f} KB'
 
 # Callback to save the data
 @app.callback(
@@ -303,7 +350,9 @@ def update_thrustgraph(id):
 def save(n_clicks):
 	global data
 	if n_clicks:
+		tmpdf = pd.read_csv('/tmp/tmp.csv')
 		df = pd.DataFrame(data, columns=columns)
+		df = pd.concat([tmpdf, df])
 		csv_str = df.to_csv(index=False)
 		return dict(content=csv_str, filename='data.csv')
 
