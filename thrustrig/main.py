@@ -13,6 +13,7 @@ from dash import Dash, dcc, html, Input, Output, State, ctx
 import dash_bootstrap_components as dbc	
 import plotly
 import plotly.subplots
+import plotly.graph_objects as go
 
 from .sensors import TemperatureSensor, VoltAmpSensor, ThrustSensor
 from .pwm_driver import PWMDriver
@@ -21,7 +22,7 @@ sensors = []
 pwmdriver = None
 collect_thread = None
 columns = ['Timestamp', 'Coil Temperature (C)', 'Voltage (V)', 'Current (A)', 'Batt Temperature (C)', 'Thrust (N)']
-data = []
+data = np.ndarray(shape=(0, len(columns)))
 data_lock = threading.Lock()
 
 # Start dash app
@@ -125,12 +126,17 @@ app.layout = html.Div([
     ),
 ])
 
-with open('/tmp/tmp.csv', 'w') as f:
+if os.name == 'posix':
+	tmpfile = os.path.join(os.environ['TEMP'], 'tmp.csv')
+elif os.name == 'nt':
+	tmpfile = os.path.join(os.environ['TEMP'], 'tmp.csv')
+
+with open(tmpfile, 'w') as f:
 	f.write(', '.join(columns) + '\n')
 
 stop_thread = False
 def collect_data():
-	global sensors, data, stop_thread
+	global sensors, data, stop_thread, tmpfile
 	while not stop_thread:
 		timestamp = datetime.datetime.now()
 		readings = []
@@ -146,9 +152,9 @@ def collect_data():
 		if len(readings) != len(columns) - 1:
 			continue
 		with data_lock:
-			data.append([timestamp] + readings)
+			data = np.vstack([data, np.array([timestamp] + readings)])
 			if len(data) > 1200:
-				with open('/tmp/tmp.csv', 'a') as f:
+				with open(tmpfile, 'a') as f:
 					arch = data[:200]
 					data = data[200:]
 					for line in arch:
@@ -271,11 +277,19 @@ def get_curval(val):
 )
 def update_tempgraph(id):
 	global sensors, data, data_lock
-	tempfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	voltfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	ampfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	batttempfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	thrustfig = plotly.subplots.make_subplots(rows=1, cols=1)
+
+	# tempfig = plotly.subplots.make_subplots(rows=1, cols=1)
+	# voltfig = plotly.subplots.make_subplots(rows=1, cols=1)
+	# ampfig = plotly.subplots.make_subplots(rows=1, cols=1)
+	# batttempfig = plotly.subplots.make_subplots(rows=1, cols=1)
+	# thrustfig = plotly.subplots.make_subplots(rows=1, cols=1)
+ 
+	tempfig = go.Figure()
+	voltfig = go.Figure()
+	ampfig = go.Figure()
+	batttempfig = go.Figure()
+	thrustfig = go.Figure()
+
 	with data_lock:
 		if len(data) == 0:
 			ts = np.array([])
@@ -293,38 +307,44 @@ def update_tempgraph(id):
 			batt_temps = npd[:, 4]
 			thrusts = npd[:, 5]
 
-	tempfig.append_trace({
-		'x': ts,
-		'y': temps,
-		'mode': 'lines',
-		'name': 'Coil Temperature',
-	}, 1, 1)
+	# tempfig.append_trace({
+	# 	'x': ts,
+	# 	'y': temps,
+	# 	'mode': 'lines',
+	# 	'name': 'Coil Temperature',
+	# }, 1, 1)
 
-	voltfig.append_trace({
-		'x': ts,
-		'y': voltages,
-		'mode': 'lines',
-		'name': 'Voltage',
-	}, 1, 1)
-	ampfig.append_trace({
-		'x': ts,
-		'y': currents,
-		'mode': 'lines',
-		'name': 'Current',
-	}, 1, 1)
-	batttempfig.append_trace({
-		'x': ts,
-		'y': batt_temps,
-		'mode': 'lines',
-		'name': 'Battery Temperature',
-	}, 1, 1)
+	# voltfig.append_trace({
+	# 	'x': ts,
+	# 	'y': voltages,
+	# 	'mode': 'lines',
+	# 	'name': 'Voltage',
+	# }, 1, 1)
+	# ampfig.append_trace({
+	# 	'x': ts,
+	# 	'y': currents,
+	# 	'mode': 'lines',
+	# 	'name': 'Current',
+	# }, 1, 1)
+	# batttempfig.append_trace({
+	# 	'x': ts,
+	# 	'y': batt_temps,
+	# 	'mode': 'lines',
+	# 	'name': 'Battery Temperature',
+	# }, 1, 1)
 
-	thrustfig.append_trace({
-		'x': ts,
-		'y': thrusts,
-		'mode': 'lines',
-		'name': 'Thrust',
-	}, 1, 1)
+	# thrustfig.append_trace({
+	# 	'x': ts,
+	# 	'y': thrusts,
+	# 	'mode': 'lines',
+	# 	'name': 'Thrust',
+	# }, 1, 1)
+ 
+	tempfig.add_trace(go.Line(x=ts, y=temps, mode='lines', name='Coil Temperature'))
+	voltfig.add_trace(go.Line(x=ts, y=voltages, mode='lines', name='Voltage'))
+	ampfig.add_trace(go.Line(x=ts, y=currents, mode='lines', name='Current'))
+	batttempfig.add_trace(go.Line(x=ts, y=batt_temps, mode='lines', name='Battery Temperature'))
+	thrustfig.add_trace(go.Line(x=ts, y=thrusts, mode='lines', name='Thrust'))
 	
 	curtemp = '' if len(temps) == 0 else get_curval(temps[-1])
 	curvolt = '' if len(voltages) == 0 else get_curval(voltages[-1])
@@ -350,7 +370,7 @@ def update_tempgraph(id):
 def save(n_clicks):
 	global data
 	if n_clicks:
-		tmpdf = pd.read_csv('/tmp/tmp.csv')
+		tmpdf = pd.read_csv(tmpfile)
 		df = pd.DataFrame(data, columns=columns)
 		df = pd.concat([tmpdf, df])
 		csv_str = df.to_csv(index=False)
