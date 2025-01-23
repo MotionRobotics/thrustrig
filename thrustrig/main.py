@@ -127,7 +127,7 @@ app.layout = html.Div([
 ])
 
 if os.name == 'posix':
-	tmpfile = os.path.join(os.environ['TEMP'], 'tmp.csv')
+	tmpfile = os.path.join('/tmp', 'tmp.csv')
 elif os.name == 'nt':
 	tmpfile = os.path.join(os.environ['TEMP'], 'tmp.csv')
 
