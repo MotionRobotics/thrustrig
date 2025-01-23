@@ -36,7 +36,7 @@ app.layout = html.Div([
 		html.Button('Config', id='cfg-btn', n_clicks=0, className='fancy-button'),
 		html.Label('', id='data-mem')
 	], style={'display': 'inline-block', 'width': '100%', 'text-align': 'center'}),
-	dcc.Interval(id='interval', interval=100, n_intervals=0, disabled=True),
+	dcc.Interval(id='interval', interval=500, n_intervals=0, disabled=True),
 	dcc.Download(id='download'),
 	html.Br(),
 	html.Br(),
@@ -160,7 +160,7 @@ def collect_data():
 					for line in arch:
 						f.write(', '.join(['' if val is None else str(val) for val in line]) + '\n')
 		for sensor in sensors: sensor.flush()
-		time.sleep(0.01)
+		time.sleep(0.45)
 		
 # Callback to start/stop the data collection
 @app.callback(
@@ -277,12 +277,6 @@ def get_curval(val):
 )
 def update_tempgraph(id):
 	global sensors, data, data_lock
-
-	# tempfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	# voltfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	# ampfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	# batttempfig = plotly.subplots.make_subplots(rows=1, cols=1)
-	# thrustfig = plotly.subplots.make_subplots(rows=1, cols=1)
  
 	tempfig = go.Figure()
 	voltfig = go.Figure()
@@ -306,39 +300,6 @@ def update_tempgraph(id):
 			currents = npd[:, 3]
 			batt_temps = npd[:, 4]
 			thrusts = npd[:, 5]
-
-	# tempfig.append_trace({
-	# 	'x': ts,
-	# 	'y': temps,
-	# 	'mode': 'lines',
-	# 	'name': 'Coil Temperature',
-	# }, 1, 1)
-
-	# voltfig.append_trace({
-	# 	'x': ts,
-	# 	'y': voltages,
-	# 	'mode': 'lines',
-	# 	'name': 'Voltage',
-	# }, 1, 1)
-	# ampfig.append_trace({
-	# 	'x': ts,
-	# 	'y': currents,
-	# 	'mode': 'lines',
-	# 	'name': 'Current',
-	# }, 1, 1)
-	# batttempfig.append_trace({
-	# 	'x': ts,
-	# 	'y': batt_temps,
-	# 	'mode': 'lines',
-	# 	'name': 'Battery Temperature',
-	# }, 1, 1)
-
-	# thrustfig.append_trace({
-	# 	'x': ts,
-	# 	'y': thrusts,
-	# 	'mode': 'lines',
-	# 	'name': 'Thrust',
-	# }, 1, 1)
  
 	tempfig.add_trace(go.Line(x=ts, y=temps, mode='lines', name='Coil Temperature'))
 	voltfig.add_trace(go.Line(x=ts, y=voltages, mode='lines', name='Voltage'))
@@ -372,7 +333,8 @@ def save(n_clicks):
 	if n_clicks:
 		tmpdf = pd.read_csv(tmpfile)
 		df = pd.DataFrame(data, columns=columns)
-		df = pd.concat([tmpdf, df])
+		if len(tmpdf) > 0:
+			df = pd.concat([tmpdf, df])
 		csv_str = df.to_csv(index=False)
 		return dict(content=csv_str, filename='data.csv')
 
