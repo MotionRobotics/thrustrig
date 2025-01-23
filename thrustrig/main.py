@@ -4,6 +4,7 @@ import time
 import os
 import sys
 import serial
+import json
 
 import numpy as np
 import pandas as pd
@@ -15,18 +16,62 @@ import plotly
 import plotly.subplots
 import plotly.graph_objects as go
 
-from .sensors import TemperatureSensor, VoltAmpSensor, ThrustSensor
+from .sensors import TemperatureSensor, VoltAmpSensor, ThrustSensor, RPMSensor
 from .pwm_driver import PWMDriver
 	
 sensors = []
 pwmdriver = None
 collect_thread = None
-columns = ['Timestamp', 'Coil Temperature (C)', 'Voltage (V)', 'Current (A)', 'Batt Temperature (C)', 'Thrust (N)']
+columns = ['Timestamp', 'Coil Temperature (C)', 'Voltage (V)', 'Current (A)', 'Batt Temperature (C)', 'Thrust (N)', 'RPM']
 data = np.ndarray(shape=(0, len(columns)))
 data_lock = threading.Lock()
 
 # Start dash app
-app = Dash(__name__, assets_folder=os.path.join(os.path.dirname(__file__), 'assets'), external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = Dash(
+    __name__,
+    assets_folder=os.path.join(os.path.dirname(__file__), 'assets'),
+    external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP]
+)
+
+sigrokcli_dl = 'https://sigrok.org/wiki/Downloads'
+if os.name == 'posix':
+	sigrokcli_dl = 'https://sigrok.org/wiki/Downloads#Linux_distribution_packages'
+elif os.name == 'nt':
+	sigrokcli_dl = 'https://sigrok.org/wiki/Downloads#windows'
+
+
+config = {
+	'temp': {
+		'enable': True,
+		'port': '/dev/ttyUSB0',
+		'baudrate': 115200
+	},
+	'batt': {
+		'enable': True,
+		'port': '/dev/ttyUSB1',
+		'baudrate': 115200
+	},
+	'thrust': {
+		'enable': True,
+		'port': '/dev/ttyUSB2',
+		'baudrate': 115200
+	},
+	'rpm': {
+		'enable': True,
+		'sigrokpath': os.environ['HOME'] + '/sigrok-cli'
+	},
+	'pwm': {
+		'enable': True,
+		'port': '/dev/ttyUSB3',
+		'baudrate': 115200
+	}
+}
+
+config_path = os.path.join(os.environ['HOME'], 'thriftrig.cfg')
+
+if os.path.isfile(config_path):
+	with open(config_path, 'r') as f:
+		config = json.load(f)
 
 app.layout = html.Div([
 	html.H1('Thrust Rig'),
@@ -58,49 +103,60 @@ app.layout = html.Div([
 		dcc.Graph(id='ampgraph', className='graph'),
 		dcc.Graph(id='batttempgraph', className='graph'),
 		dcc.Graph(id='thrustgraph', className='graph'),
+		dcc.Graph(id='rpmgraph', className='graph'),
 	], className='graph-panel'),
 	dbc.Modal([
 			dbc.ModalHeader(dbc.ModalTitle('Configuration'), close_button=False),
 			dbc.ModalBody([
 				html.H3('Coil Temperature', style={'margin-top': '20px'}),
 				html.Br(),
-				dcc.Checklist(['Enable'], ['Enable'], id='temp-enable'),
+				dcc.Checklist(['Enable'], ['Enable'] if config['temp']['enable'] else [], id='temp-enable', persistence=True),
 				html.Br(),
 				html.Label('Port: '),
-				dcc.Input(id='tempport', type='text', value='/dev/ttyUSB0'),
+				dcc.Input(id='tempport', type='text', value=config['temp']['port'], persistence=True),
 				html.Br(),
 				html.Label('Baudrate: '),
-				dcc.Input(id='tempbaudrate', type='number', value=115200),
+				dcc.Input(id='tempbaudrate', type='number', value=config['temp']['baudrate'], persistence=True),
 		
 				html.H3('Battery', style={'margin-top': '20px'}),
 				html.Br(),
-				dcc.Checklist(['Enable'], ['Enable'], id='batt-enable'),
+				dcc.Checklist(['Enable'], ['Enable'] if config['batt']['enable'] else [], id='batt-enable', persistence=True),
 				html.Br(),
 				html.Label('Port: '),
-				dcc.Input(id='battport', type='text', value='/dev/ttyUSB1'),
+				dcc.Input(id='battport', type='text', value=config['batt']['port'], persistence=True),
 				html.Br(),
 				html.Label('Baudrate: '),
-				dcc.Input(id='battbaudrate', type='number', value=115200),
+				dcc.Input(id='battbaudrate', type='number', value=config['batt']['baudrate'], persistence=True),
 		
 				html.H3('Thrust', style={'margin-top': '20px'}),
 				html.Br(),
-				dcc.Checklist(['Enable'], ['Enable'], id='thrust-enable'),
+				dcc.Checklist(['Enable'], ['Enable'] if config['thrust']['enable'] else [], id='thrust-enable', persistence=True),
 				html.Br(),
 				html.Label('Port: '),
-				dcc.Input(id='thrustport', type='text', value='/dev/ttyUSB2'),
+				dcc.Input(id='thrustport', type='text', value=config['thrust']['port'], persistence=True),
 				html.Br(),
 				html.Label('Baudrate: '),
-				dcc.Input(id='thrustbaudrate', type='number', value=115200),
+				dcc.Input(id='thrustbaudrate', type='number', value=config['thrust']['baudrate'], persistence=True),
+    
+				html.H3('RPM Sensor', style={'margin-top': '20px'}),
+				html.Br(),
+				dcc.Checklist(['Enable'], ['Enable'] if config['rpm']['enable'] else [], id='rpm-enable', persistence=True),
+				html.Br(),
+				html.Label('Path to sigrok-cli: '),
+				dcc.Input(id='sigrokpath', type='text', value=config['rpm']['sigrokpath'], persistence=True),
+				html.I(className='bi bi-check-circle-fill me-2', id='sigrok-check', style={'color': 'green'}),
+				html.Br(),
+				html.A('Download sigrok-cli', href=sigrokcli_dl, target='_blank'),
     
 				html.H3('PWM Driver', style={'margin-top': '20px'}),
 				html.Br(),
-				dcc.Checklist(['Enable'], ['Enable'], id='pwm-enable'),
+				dcc.Checklist(['Enable'], ['Enable'] if config['pwm']['enable'] else [], id='pwm-enable', persistence=True),
 				html.Br(),
 				html.Label('Port: '),
-				dcc.Input(id='pwmdriverport', type='text', value='/dev/ttyUSB3'),
+				dcc.Input(id='pwmdriverport', type='text', value=config['pwm']['port'], persistence=True),
 				html.Br(),
 				html.Label('Baudrate: '),
-				dcc.Input(id='pwmdriverbaudrate', type='number', value=115200),
+				dcc.Input(id='pwmdriverbaudrate', type='number', value=config['pwm']['baudrate'], persistence=True),
 			]),
 			dbc.ModalFooter([
 				html.Button('Ok', id='ok-config', n_clicks=0, className='fancy-button'),
@@ -108,7 +164,7 @@ app.layout = html.Div([
 		],
 		id='config-modal',
 		is_open=False,
-		keyboard=True,
+		keyboard=False,
 		size='lg',
 	),
 	dbc.Modal([
@@ -183,6 +239,8 @@ def collect_data():
 	State('thrust-enable', 'value'),
 	State('thrustport', 'value'),
 	State('thrustbaudrate', 'value'),
+	State('rpm-enable', 'value'),
+	State('sigrokpath', 'value'),
 	State('pwm-enable', 'value'),
 	State('pwmdriverport', 'value'),
 	State('pwmdriverbaudrate', 'value'),
@@ -200,6 +258,8 @@ def start_stop(
 	thrustenable,
 	thrustport,
 	thrustbaudrate,
+	rpmenable,
+	sigrokpath,
 	pwmenable,
 	pwmdriverport,
 	pwmdriverbaudrate
@@ -213,6 +273,7 @@ def start_stop(
 			TemperatureSensor(tempport, tempbaudrate),
 			VoltAmpSensor(battport, battbaudrate),
 			ThrustSensor(thrustport, thrustbaudrate),
+			RPMSensor(sigrokpath)
 		]
 		try:
 			if 'Enable' in tempenable:
@@ -221,6 +282,8 @@ def start_stop(
 				sensors[1].start()
 			if 'Enable' in thrustenable:
 				sensors[2].start()
+			if 'Enable' in rpmenable:
+				sensors[3].start()
 			if 'Enable' in pwmenable:
 				pwmdriver = PWMDriver(pwmdriverport, pwmdriverbaudrate)
 				pwmdriver.start()
@@ -228,6 +291,10 @@ def start_stop(
 			sensors = []
 			pwmdriver = None
 			return 'Start', 'fancy-button', True, True, 0, '0', f'Error opening serial port: {e.strerror}', True
+		except ValueError:
+			sensors = []
+			pwmdriver = None
+			return 'Start', 'fancy-button', True, True, 0, '0', 'Check path to sigrok-cli', True
 		collect_thread = threading.Thread(target=collect_data)
 		collect_thread.start()
 		return 'Stop', 'hide', False, False, 0, '0', '', False
@@ -272,10 +339,11 @@ def get_curval(val):
 	Output('ampgraph', 'figure'),
 	Output('batttempgraph', 'figure'),
 	Output('thrustgraph', 'figure'),
+	Output('rpmgraph', 'figure'),
 	Output('data-mem', 'children'),
 	Input('interval', 'n_intervals'),
 )
-def update_tempgraph(id):
+def update_graphs(id):
 	global sensors, data, data_lock
  
 	tempfig = go.Figure()
@@ -283,6 +351,7 @@ def update_tempgraph(id):
 	ampfig = go.Figure()
 	batttempfig = go.Figure()
 	thrustfig = go.Figure()
+	rpmfig = go.Figure()
 
 	with data_lock:
 		if len(data) == 0:
@@ -292,6 +361,7 @@ def update_tempgraph(id):
 			currents = np.array([])
 			batt_temps = np.array([])
 			thrusts = np.array([])
+			rpms = np.array([])
 		else:
 			npd = np.array(data)
 			ts = npd[:, 0]
@@ -300,28 +370,32 @@ def update_tempgraph(id):
 			currents = npd[:, 3]
 			batt_temps = npd[:, 4]
 			thrusts = npd[:, 5]
+			rpms = npd[:, 6]
  
 	tempfig.add_trace(go.Line(x=ts, y=temps, mode='lines', name='Coil Temperature'))
 	voltfig.add_trace(go.Line(x=ts, y=voltages, mode='lines', name='Voltage'))
 	ampfig.add_trace(go.Line(x=ts, y=currents, mode='lines', name='Current'))
 	batttempfig.add_trace(go.Line(x=ts, y=batt_temps, mode='lines', name='Battery Temperature'))
 	thrustfig.add_trace(go.Line(x=ts, y=thrusts, mode='lines', name='Thrust'))
+	rpmfig.add_trace(go.Line(x=ts, y=rpms, mode='lines', name='RPM'))
 	
 	curtemp = '' if len(temps) == 0 else get_curval(temps[-1])
 	curvolt = '' if len(voltages) == 0 else get_curval(voltages[-1])
 	curamp = '' if len(currents) == 0 else get_curval(currents[-1])
 	curbatttemp = '' if len(batt_temps) == 0 else get_curval(batt_temps[-1])
 	curthrust = '' if len(thrusts) == 0 else get_curval(thrusts[-1])
+	currpm = '' if len(rpms) == 0 else get_curval(rpms[-1])
 
 	voltfig.update_layout(title=f'Voltage vs Time{curvolt}', xaxis_title='Time', yaxis_title='Voltage', uirevision=0)
 	ampfig.update_layout(title=f'Current vs Time{curamp}', xaxis_title='Time', yaxis_title='Current', uirevision=0)
 	batttempfig.update_layout(title=f'Battery Temperature vs Time{curbatttemp}', xaxis_title='Time', yaxis_title='Battery Temperature (C)', uirevision=0)
 	tempfig.update_layout(title=f'Coil Temperature vs Time{curtemp}', xaxis_title='Time', yaxis_title='Coil Temperature (C)', uirevision=0)
 	thrustfig.update_layout(title=f'Thrust vs Time{curthrust}', xaxis_title='Time', yaxis_title='Thrust (N)', uirevision=0)
+	rpmfig.update_layout(title=f'RPM vs Time{currpm}', xaxis_title='Time', yaxis_title='RPM', uirevision=0)
  
 	with data_lock:
 		mem_used = sys.getsizeof(data) / 1024
-	return tempfig, voltfig, ampfig, batttempfig, thrustfig, f'Memory used: {mem_used:.2f} KB'
+	return tempfig, voltfig, ampfig, batttempfig, thrustfig, rpmfig, f'Memory used: {mem_used:.2f} KB'
 
 # Callback to save the data
 @app.callback(
@@ -338,18 +412,169 @@ def save(n_clicks):
 		csv_str = df.to_csv(index=False)
 		return dict(content=csv_str, filename='data.csv')
 
+sigchk = {
+	'ok': ({'color': 'green'}, 'bi bi-check-circle-fill me-2'),
+	'err': ({'color': 'red'}, 'bi bi-exclamation-triangle-fill me-2')
+}
+
 # Callback to show the configuration modal
 @app.callback(
-	Output('config-modal', 'is_open'),
+	Output('config-modal', 'is_open', allow_duplicate=True),
+	Output('sigrok-check', 'style', allow_duplicate=True),
+	Output('sigrok-check', 'className', allow_duplicate=True),
 	Input('cfg-btn', 'n_clicks'),
-	Input('ok-config', 'n_clicks'),
 	State('config-modal', 'is_open'),
+	State('sigrokpath', 'value'),
 	prevent_initial_call=True
 )
-def config_modal(config_clicks, ok_clicks, is_open):
-	if config_clicks or ok_clicks:
-		return not is_open
-	return is_open
+def config_modal(config_clicks, is_open, sigrokpath):
+
+	sigchk_style = None
+	sigchk_class = None
+	if os.path.isfile(sigrokpath):
+		sigchk_style, sigchk_class = sigchk['ok']
+	else:
+		sigchk_style, sigchk_class = sigchk['err']
+
+	if config_clicks:
+		return True, sigchk_style, sigchk_class
+	return False, sigchk_style, sigchk_class
+
+# Callback to close the configuration modal
+@app.callback(
+	Output('config-modal', 'is_open'),
+	Input('ok-config', 'n_clicks'),
+	State('temp-enable', 'value'),
+	State('tempport', 'value'),
+	State('tempbaudrate', 'value'),
+	State('batt-enable', 'value'),
+	State('battport', 'value'),
+	State('battbaudrate', 'value'),
+	State('thrust-enable', 'value'),
+	State('thrustport', 'value'),
+	State('thrustbaudrate', 'value'),
+	State('rpm-enable', 'value'),
+	State('sigrokpath', 'value'),
+	State('pwm-enable', 'value'),
+	State('pwmdriverport', 'value'),
+	State('pwmdriverbaudrate', 'value'),
+	prevent_initial_call=True
+)
+def close_config(
+    ok_clicks,
+    tempenable,
+    tempport,
+    tempbaudrate,
+	battenable,
+    battport,
+    battbaudrate,
+	thrustenable,
+	thrustport,
+	thrustbaudrate,
+	rpmenable,
+	sigrokpath,
+	pwmenable,
+	pwmdriverport,
+	pwmdriverbaudrate
+	):
+
+	global config
+
+	with open(config_path, 'w') as f:
+		json.dump({
+			'temp': {
+				'enable': 'Enable' in tempenable,
+				'port': tempport,
+				'baudrate': tempbaudrate
+			},
+			'batt': {
+				'enable': 'Enable' in battenable,
+				'port': battport,
+				'baudrate': battbaudrate
+			},
+			'thrust': {
+				'enable': 'Enable' in thrustenable,
+				'port': thrustport,
+				'baudrate': thrustbaudrate
+			},
+			'rpm': {
+				'enable': 'Enable' in rpmenable,
+				'sigrokpath': sigrokpath
+			},
+			'pwm': {
+				'enable': 'Enable' in pwmenable,
+				'port': pwmdriverport,
+				'baudrate': pwmdriverbaudrate
+			}
+		}, f)
+
+	if ok_clicks:
+		return False
+	return True
+
+@app.callback(
+	Input('temp-enable', 'value'),
+	Input('tempport', 'value'),
+	Input('tempbaudrate', 'value'),
+	Input('batt-enable', 'value'),
+	Input('battport', 'value'),
+	Input('battbaudrate', 'value'),
+	Input('thrust-enable', 'value'),
+	Input('thrustport', 'value'),
+	Input('thrustbaudrate', 'value'),
+	Input('rpm-enable', 'value'),
+	Input('sigrokpath', 'value'),
+	Input('pwm-enable', 'value'),
+	Input('pwmdriverport', 'value'),
+	Input('pwmdriverbaudrate', 'value')
+)
+def update_config(
+	tempenable,
+	tempport,
+	tempbaudrate,
+	battenable,
+	battport,
+	battbaudrate,
+	thrustenable,
+	thrustport,
+	thrustbaudrate,
+	rpmenable,
+	sigrokpath,
+	pwmenable,
+	pwmdriverport,
+	pwmdriverbaudrate
+	):
+	global config
+
+	config['temp']['enable'] = 'Enable' in tempenable
+	config['temp']['port'] = tempport
+	config['temp']['baudrate'] = tempbaudrate
+
+	config['batt']['enable'] = 'Enable' in battenable
+	config['batt']['port'] = battport
+	config['batt']['baudrate'] = battbaudrate
+
+	config['thrust']['enable'] = 'Enable' in thrustenable
+	config['thrust']['port'] = thrustport
+	config['thrust']['baudrate'] = thrustbaudrate
+
+	config['rpm']['enable'] = 'Enable' in rpmenable
+	config['rpm']['sigrokpath'] = sigrokpath
+
+	config['pwm']['enable'] = 'Enable' in pwmenable
+	config['pwm']['port'] = pwmdriverport
+	config['pwm']['baudrate'] = pwmdriverbaudrate
+
+@app.callback(
+	Output('sigrok-check', 'style'),
+	Output('sigrok-check', 'className'),
+	Input('sigrokpath', 'value'),
+	prevent_initial_call=True
+)
+def check_sigrokpath(path):
+	if os.path.isfile(path):
+		return sigchk['ok']
+	return sigchk['err']
 
 def main():
 	app.run_server(debug=False)
