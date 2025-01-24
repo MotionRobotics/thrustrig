@@ -1,11 +1,11 @@
 # Setup script to install the package as a command line tool
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='thrustrig',
 	version='0.0.2',
-	packages=['thrustrig'],
+	packages=find_packages(),
 	install_requires=[
 		'numpy',
 		'pandas',
