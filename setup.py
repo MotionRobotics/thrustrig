@@ -6,6 +6,9 @@ setup(
     name='thrustrig',
 	version='0.0.2',
 	packages=find_packages(),
+	package_data={
+		'thrustrig': ['assets/*']
+	},
 	install_requires=[
 		'numpy',
 		'pandas',
