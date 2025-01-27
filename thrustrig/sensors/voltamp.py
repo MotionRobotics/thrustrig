@@ -5,26 +5,39 @@ class VoltAmpSensor:
 
 	n_vals = 3
 
-	def __init__(self, port, baudrate):
+	def __init__(self, port, baudrate, ser_timeout):
 		self.port = port
 		self.baudrate = baudrate
 		self.ser = None
+		self.ser_timeout = ser_timeout
   
 	def enabled(self):
 		return self.ser is not None
 
 	def start(self):
-		self.ser = serial.Serial(self.port, self.baudrate)
+		self.ser = serial.Serial(self.port, self.baudrate, timeout=self.ser_timeout)
 		self.ser.flushInput()
 		self.ser.flushOutput()
   
-	def read(self):
+	def read(self, timeout_s):
 		val = None
+		s = ''
 		try:
+			# ':r50{data}\n'
+			start = time.time()
 			while True:
-				s = self.ser.readline().decode().strip()
-				if len(s) > 0 and s[:4] == ':r50':
+				if time.time() - start > timeout_s:
 					break
+				ss = self.ser.read(1).decode('utf-8')
+				if ss == ':':
+					ss += self.ser.read(3).decode('utf-8')
+					if ss == ':r50':
+						s = ss
+						continue
+				if s:
+					s += ss
+					if ss == '\n':
+						break
 		except UnicodeDecodeError:
 			return None
 		try:
