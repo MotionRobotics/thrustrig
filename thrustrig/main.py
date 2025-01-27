@@ -54,7 +54,9 @@ config = {
 	'thrust': {
 		'enable': True,
 		'port': '/dev/ttyUSB2',
-		'baudrate': 115200
+		'baudrate': 115200,
+		'offset': 991.5,
+		'scale': 117.6
 	},
 	'rpm': {
 		'enable': True,
@@ -71,7 +73,9 @@ config_path = os.path.join(os.environ['HOME'], 'thrustrig.cfg')
 
 if os.path.isfile(config_path):
 	with open(config_path, 'r') as f:
-		config = json.load(f)
+		new_config = json.load(f)
+		for key in new_config:
+			config[key].update(new_config[key])
 
 app.layout = html.Div([
 	html.H1('Thrust Rig'),
@@ -137,6 +141,14 @@ app.layout = html.Div([
 				html.Br(),
 				html.Label('Baudrate: '),
 				dcc.Input(id='thrustbaudrate', type='number', value=config['thrust']['baudrate'], persistence=True),
+				html.Br(),
+				html.Label('Offset: '),
+				dcc.Input(id='thrustoffset', type='number', value=config['thrust']['offset'], persistence=True),
+				html.Button('Tare', id='tare-thrust', n_clicks=0, className='fancy-button'),
+				html.Br(),
+				html.Label('Scale: '),
+				dcc.Input(id='thrustscale', type='number', value=config['thrust']['scale'], persistence=True),
+				html.Button('Calibrate', id='calibrate-thrust', n_clicks=0, className='fancy-button', disabled=True),
     
 				html.H3('RPM Sensor', style={'margin-top': '20px'}),
 				html.Br(),
@@ -231,66 +243,33 @@ def collect_data():
 	Output('pwm-slider', 'disabled'),
 	Output('pwm-slider', 'value', allow_duplicate=True),
 	Output('pwm-val', 'children', allow_duplicate=True),
-	Output('error-msg', 'children'),
-	Output('error-modal', 'is_open'),
+	Output('error-msg', 'children', allow_duplicate=True),
+	Output('error-modal', 'is_open', allow_duplicate=True),
 	Input('start-stop', 'n_clicks'),
-	Input('ok-error', 'n_clicks'),
-	State('temp-enable', 'value'),
-	State('tempport', 'value'),
-	State('tempbaudrate', 'value'),
-	State('batt-enable', 'value'),
-	State('battport', 'value'),
-	State('battbaudrate', 'value'),
-	State('thrust-enable', 'value'),
-	State('thrustport', 'value'),
-	State('thrustbaudrate', 'value'),
-	State('rpm-enable', 'value'),
-	State('sigrokpath', 'value'),
-	State('pwm-enable', 'value'),
-	State('pwmdriverport', 'value'),
-	State('pwmdriverbaudrate', 'value'),
 	prevent_initial_call=True
 )
 def start_stop(
     start_stop,
-    ok_err,
-    tempenable,
-    tempport,
-    tempbaudrate,
-	battenable,
-    battport,
-    battbaudrate,
-	thrustenable,
-	thrustport,
-	thrustbaudrate,
-	rpmenable,
-	sigrokpath,
-	pwmenable,
-	pwmdriverport,
-	pwmdriverbaudrate
 	):
 	global sensors, collect_thread, data, stop_thread, pwmdriver
-	if ctx.triggered_id == 'ok-error':
-		if ok_err:
-			return 'Start', 'fancy-button', True, True, 0, '0', '', False
 	if start_stop % 2 == 1:
 		sensors = [
-			TemperatureSensor(tempport, tempbaudrate),
-			VoltAmpSensor(battport, battbaudrate),
-			ThrustSensor(thrustport, thrustbaudrate),
-			RPMSensor(sigrokpath)
+			TemperatureSensor(config['temp']['port'], config['temp']['baudrate']),
+			VoltAmpSensor(config['batt']['port'], config['batt']['baudrate']),
+			ThrustSensor(config['thrust']['port'], config['thrust']['baudrate'], config['thrust']['offset'], config['thrust']['scale']),
+			RPMSensor(config['rpm']['sigrokpath'])
 		]
 		try:
-			if 'Enable' in tempenable:
+			if config['temp']['enable']:
 				sensors[0].start()
-			if 'Enable' in battenable:
+			if config['batt']['enable']:
 				sensors[1].start()
-			if 'Enable' in thrustenable:
+			if config['thrust']['enable']:
 				sensors[2].start()
-			if 'Enable' in rpmenable:
+			if config['rpm']['enable']:
 				sensors[3].start()
-			if 'Enable' in pwmenable:
-				pwmdriver = PWMDriver(pwmdriverport, pwmdriverbaudrate)
+			if config['pwm']['enable']:
+				pwmdriver = PWMDriver(config['pwm']['port'], config['pwm']['baudrate'])
 				pwmdriver.start()
 		except serial.SerialException as e:
 			sensors = []
@@ -318,6 +297,49 @@ def start_stop(
 			del pwmdriver
 			pwmdriver = None
 		return 'Start', 'fancy-button', True, True, 0, '0', '', False
+
+# Callback to close the error modal
+@app.callback(
+	Output('error-modal', 'is_open', allow_duplicate=True),
+	Input('ok-error', 'n_clicks'),
+	prevent_initial_call=True
+)
+def close_error(n_clicks):
+	if n_clicks:
+		return False
+	return True
+
+# Callback to tare the thrust sensor
+@app.callback(
+	Output('thrustoffset', 'value'),
+	Output('error-modal', 'is_open', allow_duplicate=True),
+	Output('error-msg', 'children'),
+	Input('tare-thrust', 'n_clicks'),
+	State('thrustoffset', 'value'),
+	prevent_initial_call=True
+)
+def tare_thrust(
+	n_clicks,
+	offset
+	):
+	thrustsensor = ThrustSensor(config['thrust']['port'], config['thrust']['baudrate'])
+	try:
+		thrustsensor.start()
+	except serial.SerialException as e:
+		thrustsensor.close()
+		return offset, True, f'Error opening serial port: {e.strerror}'
+	time.sleep(0.1)
+	vals = []
+	for _ in range(10):
+		val = thrustsensor.read()
+		if val is not None:
+			vals.append(val)
+		time.sleep(0.1)
+	thrustsensor.close()
+	if len(vals) == 0:
+		return offset, True, 'Error reading thrust sensor'
+	offset = np.mean(vals)
+	return offset, False, ''
 
 # Callback to update the PWM value
 @app.callback(
@@ -486,32 +508,7 @@ def close_config(
 	global config
 
 	with open(config_path, 'w') as f:
-		json.dump({
-			'temp': {
-				'enable': 'Enable' in tempenable,
-				'port': tempport,
-				'baudrate': tempbaudrate
-			},
-			'batt': {
-				'enable': 'Enable' in battenable,
-				'port': battport,
-				'baudrate': battbaudrate
-			},
-			'thrust': {
-				'enable': 'Enable' in thrustenable,
-				'port': thrustport,
-				'baudrate': thrustbaudrate
-			},
-			'rpm': {
-				'enable': 'Enable' in rpmenable,
-				'sigrokpath': sigrokpath
-			},
-			'pwm': {
-				'enable': 'Enable' in pwmenable,
-				'port': pwmdriverport,
-				'baudrate': pwmdriverbaudrate
-			}
-		}, f)
+		json.dump(config, f)
 
 	if ok_clicks:
 		return False
@@ -527,6 +524,7 @@ def close_config(
 	Input('thrust-enable', 'value'),
 	Input('thrustport', 'value'),
 	Input('thrustbaudrate', 'value'),
+	Input('thrustoffset', 'value'),
 	Input('rpm-enable', 'value'),
 	Input('sigrokpath', 'value'),
 	Input('pwm-enable', 'value'),
@@ -543,6 +541,7 @@ def update_config(
 	thrustenable,
 	thrustport,
 	thrustbaudrate,
+	thrustoffset,
 	rpmenable,
 	sigrokpath,
 	pwmenable,
@@ -562,6 +561,7 @@ def update_config(
 	config['thrust']['enable'] = 'Enable' in thrustenable
 	config['thrust']['port'] = thrustport
 	config['thrust']['baudrate'] = thrustbaudrate
+	config['thrust']['offset'] = thrustoffset
 
 	config['rpm']['enable'] = 'Enable' in rpmenable
 	config['rpm']['sigrokpath'] = sigrokpath
