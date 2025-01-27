@@ -5,6 +5,7 @@ import os
 import sys
 import serial
 import json
+import concurrent.futures as cf
 
 import numpy as np
 import pandas as pd
@@ -200,15 +201,19 @@ def collect_data():
 			continue
 		timestamp = datetime.datetime.now()
 		readings = []
+		futures = []
+		with cf.ProcessPoolExecutor() as ex:
+			futures = [ex.submit(sensor.read) for sensor in sensors if sensor.enabled()]
+			cf.wait(futures)
 		for sensor in sensors:
 			if not sensor.enabled():
 				readings.extend([None] * sensor.n_vals)
 				continue
-			reading = sensor.read()
-			if isinstance(reading, (list, tuple)):
-				readings.extend(reading)
+			vals = sensor.parse(futures.pop().result())
+			if vals is None:
+				readings.extend([None] * sensor.n_vals)
 			else:
-				readings.append(reading)
+				readings.extend(vals)
 		if len(readings) != len(columns) - 1:
 			continue
 		with data_lock:
