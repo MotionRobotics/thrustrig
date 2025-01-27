@@ -1,5 +1,6 @@
 import serial
 import time
+from ..utils import time_it
 
 class ThrustSensor:
 
@@ -18,6 +19,7 @@ class ThrustSensor:
 		self.ser.flushInput()
 		self.ser.flushOutput()
 
+	@time_it("Thrust read")
 	def read(self):
 		val = None
 		try:

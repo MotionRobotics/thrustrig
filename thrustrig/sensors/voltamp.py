@@ -1,5 +1,6 @@
 import serial
 import time
+from ..utils import time_it
 
 class VoltAmpSensor:
 
@@ -19,6 +20,7 @@ class VoltAmpSensor:
 		self.ser.flushInput()
 		self.ser.flushOutput()
   
+	@time_it("Batt read")
 	def read(self, timeout_s = 0.1):
 		val = None
 		s = ''

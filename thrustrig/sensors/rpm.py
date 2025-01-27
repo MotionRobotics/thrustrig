@@ -1,6 +1,7 @@
 import os
 import time
 import subprocess
+from ..utils import time_it
 
 class RPMSensor:
 
@@ -20,6 +21,7 @@ class RPMSensor:
 			self._enabled = False
 			raise ValueError("sigrok-cli not found")
 
+	@time_it("RPM read")
 	def read(self):
 		val = None
 		try:
