@@ -6,12 +6,14 @@ class ThrustSensor:
 
 	n_vals = 1
 
-	def __init__(self, port, baudrate, offset = None, scale = None):
+	def __init__(self, port, baudrate, offset = None, scale = None, senlen = 1, efflen = 1):
 		self.port = port
 		self.baudrate = baudrate
 		self.ser = None
 		self.offset = offset
 		self.scale = scale
+		self.senlen = senlen
+		self.efflen = efflen
   
 	def enabled(self):
 		return self.ser is not None
@@ -34,7 +36,7 @@ class ThrustSensor:
 			val = float(s[1:])
 			if self.offset is not None and self.scale is not None:
 				val = (val - self.offset) / self.scale
-				val *= 85./114
+				val *= self.senlen / self.efflen
 		except ValueError:
 			pass
 		return val

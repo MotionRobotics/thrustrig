@@ -56,7 +56,9 @@ config = {
 		'port': '/dev/ttyUSB2',
 		'baudrate': 115200,
 		'offset': 991.5,
-		'scale': 113.68
+		'scale': 117.6,
+		'senlen': 85,
+		'efflen': 114
 	},
 	'rpm': {
 		'enable': True,
@@ -149,6 +151,12 @@ app.layout = html.Div([
 				html.Label('Scale: '),
 				dcc.Input(id='thrustscale', type='number', value=config['thrust']['scale'], persistence=True),
 				html.Button('Calibrate', id='calibrate-thrust', n_clicks=0, className='fancy-button', disabled=True),
+				html.Br(),
+				html.Label('Sensor arm length: '),
+				dcc.Input(id='thrustsenlen', type='number', value=config['thrust']['senlen'], persistence=True),
+				html.Br(),
+				html.Label('Effector arm length: '),
+				dcc.Input(id='thrustefflen', type='number', value=config['thrust']['efflen'], persistence=True),
     
 				html.H3('RPM Sensor', style={'margin-top': '20px'}),
 				html.Br(),
@@ -256,7 +264,14 @@ def start_stop(
 		sensors = [
 			TemperatureSensor(config['temp']['port'], config['temp']['baudrate']),
 			VoltAmpSensor(config['batt']['port'], config['batt']['baudrate']),
-			ThrustSensor(config['thrust']['port'], config['thrust']['baudrate'], config['thrust']['offset'], config['thrust']['scale']),
+			ThrustSensor(
+    			config['thrust']['port'],
+       			config['thrust']['baudrate'],
+          		config['thrust']['offset'],
+            	config['thrust']['scale'],
+             	config['thrust']['senlen'],
+              	config['thrust']['efflen']
+            ),
 			RPMSensor(config['rpm']['sigrokpath'])
 		]
 		try:
@@ -471,38 +486,10 @@ def config_modal(config_clicks, is_open, sigrokpath):
 @app.callback(
 	Output('config-modal', 'is_open'),
 	Input('ok-config', 'n_clicks'),
-	State('temp-enable', 'value'),
-	State('tempport', 'value'),
-	State('tempbaudrate', 'value'),
-	State('batt-enable', 'value'),
-	State('battport', 'value'),
-	State('battbaudrate', 'value'),
-	State('thrust-enable', 'value'),
-	State('thrustport', 'value'),
-	State('thrustbaudrate', 'value'),
-	State('rpm-enable', 'value'),
-	State('sigrokpath', 'value'),
-	State('pwm-enable', 'value'),
-	State('pwmdriverport', 'value'),
-	State('pwmdriverbaudrate', 'value'),
 	prevent_initial_call=True
 )
 def close_config(
     ok_clicks,
-    tempenable,
-    tempport,
-    tempbaudrate,
-	battenable,
-    battport,
-    battbaudrate,
-	thrustenable,
-	thrustport,
-	thrustbaudrate,
-	rpmenable,
-	sigrokpath,
-	pwmenable,
-	pwmdriverport,
-	pwmdriverbaudrate
 	):
 
 	global config
@@ -526,6 +513,8 @@ def close_config(
 	Input('thrustbaudrate', 'value'),
 	Input('thrustoffset', 'value'),
 	Input('thrustscale', 'value'),
+	Input('thrustsenlen', 'value'),
+	Input('thrustefflen', 'value'),
 	Input('rpm-enable', 'value'),
 	Input('sigrokpath', 'value'),
 	Input('pwm-enable', 'value'),
@@ -544,6 +533,8 @@ def update_config(
 	thrustbaudrate,
 	thrustoffset,
 	thrustscale,
+	thrustsenlen,
+	thrustefflen,
 	rpmenable,
 	sigrokpath,
 	pwmenable,
@@ -565,6 +556,8 @@ def update_config(
 	config['thrust']['baudrate'] = thrustbaudrate
 	config['thrust']['offset'] = thrustoffset
 	config['thrust']['scale'] = thrustscale
+	config['thrust']['senlen'] = thrustsenlen
+	config['thrust']['efflen'] = thrustefflen
 
 	config['rpm']['enable'] = 'Enable' in rpmenable
 	config['rpm']['sigrokpath'] = sigrokpath
