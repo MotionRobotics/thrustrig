@@ -56,7 +56,7 @@ config = {
 		'port': '/dev/ttyUSB2',
 		'baudrate': 115200,
 		'offset': 991.5,
-		'scale': 117.6
+		'scale': 113.68
 	},
 	'rpm': {
 		'enable': True,
@@ -525,6 +525,7 @@ def close_config(
 	Input('thrustport', 'value'),
 	Input('thrustbaudrate', 'value'),
 	Input('thrustoffset', 'value'),
+	Input('thrustscale', 'value'),
 	Input('rpm-enable', 'value'),
 	Input('sigrokpath', 'value'),
 	Input('pwm-enable', 'value'),
@@ -542,6 +543,7 @@ def update_config(
 	thrustport,
 	thrustbaudrate,
 	thrustoffset,
+	thrustscale,
 	rpmenable,
 	sigrokpath,
 	pwmenable,
@@ -562,6 +564,7 @@ def update_config(
 	config['thrust']['port'] = thrustport
 	config['thrust']['baudrate'] = thrustbaudrate
 	config['thrust']['offset'] = thrustoffset
+	config['thrust']['scale'] = thrustscale
 
 	config['rpm']['enable'] = 'Enable' in rpmenable
 	config['rpm']['sigrokpath'] = sigrokpath
