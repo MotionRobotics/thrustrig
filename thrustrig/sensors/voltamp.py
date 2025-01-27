@@ -5,7 +5,7 @@ class VoltAmpSensor:
 
 	n_vals = 3
 
-	def __init__(self, port, baudrate, ser_timeout):
+	def __init__(self, port, baudrate, ser_timeout = 0.01):
 		self.port = port
 		self.baudrate = baudrate
 		self.ser = None
@@ -19,7 +19,7 @@ class VoltAmpSensor:
 		self.ser.flushInput()
 		self.ser.flushOutput()
   
-	def read(self, timeout_s):
+	def read(self, timeout_s = 0.1):
 		val = None
 		s = ''
 		try:
@@ -27,7 +27,7 @@ class VoltAmpSensor:
 			start = time.time()
 			while True:
 				if time.time() - start > timeout_s:
-					break
+					return None, None, None
 				ss = self.ser.read(1).decode('utf-8')
 				if ss == ':':
 					ss += self.ser.read(3).decode('utf-8')
@@ -37,9 +37,10 @@ class VoltAmpSensor:
 				if s:
 					s += ss
 					if ss == '\n':
+						print(f"Batt got: {s}")
 						break
 		except UnicodeDecodeError:
-			return None
+			return None, None, None
 		try:
 			val = self.parse(s)
 		except ValueError:
@@ -49,9 +50,13 @@ class VoltAmpSensor:
 	def parse(self, s):
 		parts = s.split(',')
 		
-		voltage = float(parts[2]) / 100
-		current = float(parts[3]) / 100
-		temperature = float(parts[8]) % 100
+		try:
+			voltage = float(parts[2]) / 100
+			current = float(parts[3]) / 100
+			temperature = float(parts[8]) % 100
+		except IndexError as e:
+			print(f"Error in batt data: {s}")
+			return None, None, None
   
 		return voltage, current, temperature
 

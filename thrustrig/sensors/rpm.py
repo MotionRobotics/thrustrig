@@ -28,7 +28,6 @@ class RPMSensor:
 			if isinstance(out, bytes):
 				out = out.decode()
 			val = float(out.split(' ')[1])
-			print(val)
 		except (ValueError, IndexError):
 			pass
 		return val
