@@ -67,7 +67,7 @@ config = {
 	}
 }
 
-config_path = os.path.join(os.environ['HOME'], 'thriftrig.cfg')
+config_path = os.path.join(os.environ['HOME'], 'thrustrig.cfg')
 
 if os.path.isfile(config_path):
 	with open(config_path, 'r') as f:
