@@ -191,9 +191,13 @@ with open(tmpfile, 'w') as f:
 	f.write(', '.join(columns) + '\n')
 
 stop_thread = False
+last_ts = None
 def collect_data():
-	global sensors, data, stop_thread, tmpfile
+	global sensors, data, stop_thread, tmpfile, last_ts
 	while not stop_thread:
+		if last_ts is not None and (datetime.datetime.now() - last_ts).total_seconds() < 0.5:
+			time.sleep(0.1)
+			continue
 		timestamp = datetime.datetime.now()
 		readings = []
 		for sensor in sensors:
@@ -216,7 +220,7 @@ def collect_data():
 					for line in arch:
 						f.write(', '.join(['' if val is None else str(val) for val in line]) + '\n')
 		for sensor in sensors: sensor.flush()
-		time.sleep(0.45)
+		last_ts = timestamp
 		
 # Callback to start/stop the data collection
 @app.callback(
