@@ -21,7 +21,7 @@ class RPMSensor:
 			self._enabled = False
 			raise ValueError("sigrok-cli not found")
 
-	@time_it("RPM read")
+	# @time_it("RPM read")
 	def read(self):
 		val = None
 		try:

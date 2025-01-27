@@ -19,7 +19,7 @@ class ThrustSensor:
 		self.ser.flushInput()
 		self.ser.flushOutput()
 
-	@time_it("Thrust read")
+	# @time_it("Thrust read")
 	def read(self):
 		val = None
 		try:

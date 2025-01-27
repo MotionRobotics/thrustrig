@@ -19,7 +19,7 @@ class TemperatureSensor:
 		self.ser.flushInput()
 		self.ser.flushOutput()
 
-	@time_it("Temp read")
+	# @time_it("Temp read")
 	def read(self):
 		val = None
 		try:

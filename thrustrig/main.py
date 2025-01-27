@@ -22,7 +22,7 @@ from .pwm_driver import PWMDriver
 sensors = []
 pwmdriver = None
 collect_thread = None
-columns = ['Timestamp', 'Coil Temperature (C)', 'Voltage (V)', 'Current (A)', 'Batt Temperature (C)', 'Thrust (N)', 'RPM']
+columns = ['Timestamp', 'Coil Temperature (C)', 'Voltage (V)', 'Current (A)', 'Batt Temperature (C)', 'Thrust (N)', 'RPM', 'PWM']
 data = np.ndarray(shape=(0, len(columns)))
 data_lock = threading.Lock()
 
@@ -209,6 +209,7 @@ def collect_data():
 				readings.extend(reading)
 			else:
 				readings.append(reading)
+		readings.append(None if pwmdriver is None else pwmdriver.val)
 		if len(readings) != len(columns) - 1:
 			continue
 		with data_lock:
