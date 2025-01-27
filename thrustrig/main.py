@@ -5,6 +5,9 @@ import os
 import sys
 import serial
 import json
+import argparse
+import subprocess
+import re
 
 import numpy as np
 import pandas as pd
@@ -578,6 +581,35 @@ def check_sigrokpath(path):
 	return sigchk['err']
 
 def main():
+
+	# Parse command line arguments
+	parser = argparse.ArgumentParser()
+
+	parser.add_argument('command', choices=['run', 'update'], help='Command to run', default='run')
+ 
+	args = parser.parse_args()
+ 
+	# Check for update subcommand
+	if args.command == 'update':
+		# Run git pull on parent directory of thrustrig module
+		result = subprocess.Popen(['git', 'pull'], cwd=os.path.dirname(os.path.dirname(__file__)), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		out, err = result.communicate()
+		if isinstance(out, bytes):
+			out = out.decode()
+		if isinstance(err, bytes):
+			err = err.decode()
+		if err:
+			print(err)
+			return
+		if out:
+			# Check if there are any changes
+			no_updates = re.search(r'Already up-to-date', out)
+			if no_updates:
+				print('The app is already up-to-date')
+			else:
+				print('The app has been updated')
+			return
+
 	app.run_server(debug=False)
 
 if __name__ == '__main__':
