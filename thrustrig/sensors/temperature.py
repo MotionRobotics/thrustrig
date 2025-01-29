@@ -29,7 +29,9 @@ class TemperatureSensor:
 		if len(s) == 0 or s[0] != 'T':
 			return None
 		try:
-			val = float(s[1:]) / 1000
+			val = float(s[1:]) * 80 / 1000 / 60
+			if val < 25 or val > 300:
+				val = 25
 		except ValueError:
 			pass
 		return val
