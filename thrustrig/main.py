@@ -85,6 +85,7 @@ if os.path.isfile(config_path):
 app.layout = html.Div([
 	html.H1('Thrust Rig'),
 	html.Div([
+		html.Button('Reset', id='reset', n_clicks=0, className='fancy-button'),
 		html.Button('Start', id='start-stop', n_clicks=0, className='fancy-button'),
 		html.Button('Save', id='save', n_clicks=0, className='fancy-button'),
 		html.Button('Config', id='cfg-btn', n_clicks=0, className='fancy-button'),
@@ -246,6 +247,24 @@ def collect_data():
 		for sensor in sensors: sensor.flush()
 		last_ts = timestamp
 		
+# Callback to reset the data
+@app.callback(
+	Output('interval', 'n_intervals'),
+	Input('reset', 'n_clicks'),
+	prevent_initial_call=True
+)
+def reset_data(reset):
+	global data
+	with data_lock:
+		data = np.ndarray(shape=(0, len(columns)))
+  
+	if os.path.isfile(tmpfile):
+		os.remove(tmpfile)
+		with open(tmpfile, 'w') as f:
+			f.write(', '.join(columns) + '\n')
+  
+	return 0
+  
 # Callback to start/stop the data collection
 @app.callback(
 	Output('start-stop', 'children'),
