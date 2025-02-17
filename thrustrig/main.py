@@ -432,7 +432,7 @@ def start_ramp(
 	return True, False, True, 'start'
 
 @app.callback(
-	Output('ramp-state', 'data'),
+	Output('ramp-state', 'data', allow_duplicate=True),
 	Input('ramp-interval', 'n_intervals'),
 	prevent_initial_call=True
 )
@@ -455,9 +455,9 @@ def ramp(n_intervals):
 	return 'start'
 
 @app.callback(
-	Output('start-ramp', 'disabled'),
-	Output('ramp-interval', 'disabled'),
-	Output('pwm-slider', 'disabled'),
+	Output('start-ramp', 'disabled', allow_duplicate=True),
+	Output('ramp-interval', 'disabled', allow_duplicate=True),
+	Output('pwm-slider', 'disabled', allow_duplicate=True),
 	Input('ramp-state', 'data'),
 	prevent_initial_call=True
 )
