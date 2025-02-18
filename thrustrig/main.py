@@ -22,66 +22,89 @@ import plotly.graph_objects as go
 from .sensors import TemperatureSensor, VoltAmpSensor, ThrustSensor, RPMSensor
 from .pwm_driver import PWMDriver
 
-def create_app():
-	sensors = []
-	pwmdriver = None
-	collect_thread = None
-	columns = ['Timestamp', 'Coil Temperature (C)', 'Voltage (V)', 'Current (A)', 'Batt Temperature (C)', 'Thrust (N)', 'RPM', 'PWM']
-	data = np.ndarray(shape=(0, len(columns)))
-	data_lock = threading.Lock()
+sensors = []
+pwmdriver = None
+collect_thread = None
+columns = ['Timestamp', 'Coil Temperature (C)', 'Voltage (V)', 'Current (A)', 'Batt Temperature (C)', 'Thrust (N)', 'RPM', 'PWM']
+data = np.ndarray(shape=(0, len(columns)))
+data_lock = threading.Lock()
 
+sigrokcli_dl = 'https://sigrok.org/wiki/Downloads'
+if os.name == 'posix':
+	sigrokcli_dl = 'https://sigrok.org/wiki/Downloads#Linux_distribution_packages'
+elif os.name == 'nt':
+	sigrokcli_dl = 'https://sigrok.org/wiki/Downloads#windows'
+
+config = {
+	'temp': {
+		'enable': True,
+		'port': '/dev/ttyUSB0',
+		'baudrate': 115200
+	},
+	'batt': {
+		'enable': True,
+		'port': '/dev/ttyUSB1',
+		'baudrate': 115200
+	},
+	'thrust': {
+		'enable': True,
+		'port': '/dev/ttyUSB2',
+		'baudrate': 115200,
+		'offset': 991.5,
+		'scale': 117.6,
+		'senlen': 85,
+		'efflen': 114
+	},
+	'rpm': {
+		'enable': True,
+		'sigrokpath': os.environ['HOME'] + '/sigrok-cli'
+	},
+	'pwm': {
+		'enable': True,
+		'port': '/dev/ttyUSB3',
+		'baudrate': 115200
+	}
+}
+
+config_path = os.path.join(os.environ['HOME'], 'thrustrig.cfg')
+
+if os.path.isfile(config_path):
+	with open(config_path, 'r') as f:
+		new_config = json.load(f)
+		for key in new_config:
+			config[key].update(new_config[key])
+
+if os.name == 'posix':
+	tmpfile = os.path.join('/tmp', 'tmp.csv')
+elif os.name == 'nt':
+	tmpfile = os.path.join(os.environ['TEMP'], 'tmp.csv')
+
+with open(tmpfile, 'w') as f:
+	f.write(', '.join(columns) + '\n')
+
+stop_thread = False
+last_ts = None
+
+ramp_peak = 0
+ramp_steps = 0
+ramp_period = 0
+ramp_stop = False
+ramp_done = False
+ramp_val = 0
+ramp_thread = None
+
+sigchk = {
+	'ok': ({'color': 'green'}, 'bi bi-check-circle-fill me-2'),
+	'err': ({'color': 'red'}, 'bi bi-exclamation-triangle-fill me-2')
+}
+
+def create_app():
 	# Start dash app
 	app = Dash(
 		__name__,
 		assets_folder=os.path.join(os.path.dirname(__file__), 'assets'),
 		external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP]
 	)
-
-	sigrokcli_dl = 'https://sigrok.org/wiki/Downloads'
-	if os.name == 'posix':
-		sigrokcli_dl = 'https://sigrok.org/wiki/Downloads#Linux_distribution_packages'
-	elif os.name == 'nt':
-		sigrokcli_dl = 'https://sigrok.org/wiki/Downloads#windows'
-
-
-	config = {
-		'temp': {
-			'enable': True,
-			'port': '/dev/ttyUSB0',
-			'baudrate': 115200
-		},
-		'batt': {
-			'enable': True,
-			'port': '/dev/ttyUSB1',
-			'baudrate': 115200
-		},
-		'thrust': {
-			'enable': True,
-			'port': '/dev/ttyUSB2',
-			'baudrate': 115200,
-			'offset': 991.5,
-			'scale': 117.6,
-			'senlen': 85,
-			'efflen': 114
-		},
-		'rpm': {
-			'enable': True,
-			'sigrokpath': os.environ['HOME'] + '/sigrok-cli'
-		},
-		'pwm': {
-			'enable': True,
-			'port': '/dev/ttyUSB3',
-			'baudrate': 115200
-		}
-	}
-
-	config_path = os.path.join(os.environ['HOME'], 'thrustrig.cfg')
-
-	if os.path.isfile(config_path):
-		with open(config_path, 'r') as f:
-			new_config = json.load(f)
-			for key in new_config:
-				config[key].update(new_config[key])
 
 	app.layout = html.Div([
 		html.H1('Thrust Rig'),
@@ -220,17 +243,7 @@ def create_app():
 			keyboard=True,
 		),
 	])
-
-	if os.name == 'posix':
-		tmpfile = os.path.join('/tmp', 'tmp.csv')
-	elif os.name == 'nt':
-		tmpfile = os.path.join(os.environ['TEMP'], 'tmp.csv')
-
-	with open(tmpfile, 'w') as f:
-		f.write(', '.join(columns) + '\n')
-
-	stop_thread = False
-	last_ts = None
+ 
 	def collect_data():
 		global sensors, data, stop_thread, tmpfile, last_ts
 		while not stop_thread:
@@ -407,14 +420,6 @@ def create_app():
 		pwmdriver.set(val)
 		return val, str(val * 10)
 
-	ramp_peak = 0
-	ramp_steps = 0
-	ramp_period = 0
-	ramp_stop = False
-	ramp_done = False
-	ramp_val = 0
-	ramp_thread = None
-
 	@app.callback(
 		Output('start-ramp', 'disabled', allow_duplicate=True),
 		Output('ramp-interval', 'disabled', allow_duplicate=True),
@@ -578,11 +583,6 @@ def create_app():
 			csv_str = df.to_csv(index=False)
 			return dict(content=csv_str, filename='data.csv')
 
-	sigchk = {
-		'ok': ({'color': 'green'}, 'bi bi-check-circle-fill me-2'),
-		'err': ({'color': 'red'}, 'bi bi-exclamation-triangle-fill me-2')
-	}
-
 	# Callback to show the configuration modal
 	@app.callback(
 		Output('config-modal', 'is_open', allow_duplicate=True),
@@ -594,6 +594,7 @@ def create_app():
 		prevent_initial_call=True
 	)
 	def config_modal(config_clicks, is_open, sigrokpath):
+		global sigchk
 
 		sigchk_style = None
 		sigchk_class = None
