@@ -397,6 +397,7 @@ def tare_thrust(
 	Output('pwm-slider', 'value'),
 	Output('pwm-val', 'children', allow_duplicate=True),
 	Input('pwm-slider', 'value'),
+	prevent_initial_call=True
 )
 def update_pwm(val):
 	global pwmdriver
@@ -483,6 +484,7 @@ def stop_ramp(n_clicks):
 	Output('pwm-slider', 'disabled', allow_duplicate=True),
 	Output('pwm-val', 'children', allow_duplicate=True),
 	Input('ramp-interval', 'n_intervals'),
+	prevent_initial_call=True
 )
 def update_ramp(n_intervals):
 	global ramp_val, ramp_done
