@@ -395,7 +395,7 @@ def tare_thrust(
 # Callback to update the PWM value
 @app.callback(
 	Output('pwm-slider', 'value'),
-	Output('pwm-val', 'children'),
+	Output('pwm-val', 'children', allow_duplicate=True),
 	Input('pwm-slider', 'value'),
 )
 def update_pwm(val):
@@ -430,15 +430,16 @@ def start_ramp(
 	period
 	):
 	global ramp_peak, ramp_steps, ramp_period, ramp_stop, ramp_done, ramp_val, ramp_thread
+	if ramp_thread is not None:
+		ramp_stop = True
+		ramp_thread.join()
+		ramp_thread = None
 	ramp_peak = peak
 	ramp_steps = steps
 	ramp_period = period
 	ramp_stop = False
 	ramp_done = False
 	ramp_val = 0
-	if ramp_thread is not None:
-		ramp_thread.join()
-		ramp_thread = None
 	ramp_thread = threading.Thread(target=run_ramp)
 	ramp_thread.start()
 	return True, False, True
@@ -453,16 +454,16 @@ def run_ramp():
 			continue
 		if ramp_val > ramp_peak:
 			break
-		pwmdriver.set(ramp_val)
-		ramp_val += ramp_peak / ramp_steps
+		pwmdriver.set(int(ramp_val))
+		ramp_val += ramp_steps
 		start = time.time()
 	pwmdriver.set(0)
 	ramp_done = True
 
 @app.callback(
-	Output('start-ramp', 'disabled'),
-	Output('ramp-interval', 'disabled'),
-	Output('pwm-slider', 'disabled'),
+	Output('start-ramp', 'disabled', allow_duplicate=True),
+	Output('ramp-interval', 'disabled', allow_duplicate=True),
+	Output('pwm-slider', 'disabled', allow_duplicate=True),
 	Input('stop-ramp', 'n_clicks'),
 	prevent_initial_call=True
 )
@@ -471,7 +472,23 @@ def stop_ramp(n_clicks):
 	ramp_stop = True
 	while not ramp_done:
 		time.sleep(0.1)
+	ramp_thread.join()
+	ramp_stop = False
 	return False, True, False
+
+# Callback to update the PWM value
+@app.callback(
+	Output('start-ramp', 'disabled', allow_duplicate=True),
+	Output('ramp-interval', 'disabled', allow_duplicate=True),
+	Output('pwm-slider', 'disabled', allow_duplicate=True),
+	Output('pwm-val', 'children', allow_duplicate=True),
+	Input('ramp-interval', 'n_intervals'),
+)
+def update_ramp(n_intervals):
+	global ramp_val, ramp_done
+	if ramp_done:
+		return False, True, False, str(ramp_val * 10)
+	return True, False, True, str(ramp_val * 10)
 
 def get_curval(val):
 	if val is None:
