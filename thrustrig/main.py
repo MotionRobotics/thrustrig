@@ -110,14 +110,15 @@ app.layout = html.Div([
 	dbc.Row([
 		# PWM Ramp driver
 		dbc.Col([html.Label('PWM Ramp: ', style={'font-size': '1.5em'})], style={'text-align': 'right'}),
-		dbc.Col([html.Label('Peak (%): ')], style={'text-align': 'right'}),
-		dbc.Col([dcc.Input(id='pwm-peak', type='number', value=90, persistence=True)]),
-		dbc.Col([html.Label('Period (s): ')], style={'text-align': 'right'}),
-		dbc.Col([dcc.Input(id='pwm-period', type='number', value=5, persistence=True)]),
-		dbc.Col([dcc.Checklist(['Ramp down'], [], id='pwm-ramp-down', persistence=True)]),
+		dbc.Col([html.Label('Peak (0-200): ')], style={'text-align': 'right'}),
+		dbc.Col([dcc.Input(id='pwm-peak', type='number', value=200, persistence=True)]),
+		dbc.Col([html.Label('Step size: ')], style={'text-align': 'right'}),
+		dbc.Col([dcc.Input(id='pwm-steps', type='number', value=20, persistence=True)]),
+		dbc.Col([html.Label('Step duration (s): ')], style={'text-align': 'right'}),
+		dbc.Col([dcc.Input(id='pwm-period', type='number', value=1, persistence=True)]),
 		dbc.Col([html.Button('Start', id='start-ramp', n_clicks=0, className='fancy-button')]),
-		dcc.Interval(id='ramp-interval', interval=100, n_intervals=0, disabled=True),
-		dcc.Store(id='ramp-state', data=0),
+		dbc.Col([html.Button('Stop', id='stop-ramp', n_clicks=0, className='fancy-button')]),
+		dcc.Interval(id='ramp-interval', interval=250, n_intervals=0, disabled=True),
     ], align='center'),
 	html.Br(),
 	html.Div([
@@ -404,67 +405,73 @@ def update_pwm(val):
 	pwmdriver.set(val)
 	return val, str(val * 10)
 
-ramp_peak = 0.9
-ramp_period = 5
-pwm_ramp_down = False
+ramp_peak = 0
+ramp_steps = 0
+ramp_period = 0
+ramp_stop = False
+ramp_done = False
+ramp_val = 0
+ramp_thread = None
 
 @app.callback(
 	Output('start-ramp', 'disabled', allow_duplicate=True),
 	Output('ramp-interval', 'disabled', allow_duplicate=True),
 	Output('pwm-slider', 'disabled', allow_duplicate=True),
-	Output('ramp-state', 'data', allow_duplicate=True),
 	Input('start-ramp', 'n_clicks'),
 	State('pwm-peak', 'value'),
+	State('pwm-steps', 'value'),
 	State('pwm-period', 'value'),
-	State('pwm-ramp-down', 'value'),
 	prevent_initial_call=True
 )
 def start_ramp(
 	n_clicks,
 	peak,
-	period,
-	ramp_down
+	steps,
+	period
 	):
-	global ramp_peak, ramp_period, pwm_ramp_down
-	ramp_peak = peak / 100.0
+	global ramp_peak, ramp_steps, ramp_period, ramp_stop, ramp_done, ramp_val, ramp_thread
+	ramp_peak = peak
+	ramp_steps = steps
 	ramp_period = period
-	pwm_ramp_down = 'Ramp down' in ramp_down
-	return True, False, True, 'start'
-
-@app.callback(
-	Output('ramp-state', 'data', allow_duplicate=True),
-	Input('ramp-interval', 'n_intervals'),
-	prevent_initial_call=True
-)
-def ramp(n_intervals):
-	global pwmdriver, ramp_peak, ramp_period, pwm_ramp_down
-	if pwmdriver is None:
-		return 'stop'
-	t = n_intervals * 0.1
-	if t > ramp_period:
-		if not pwm_ramp_down:
-			pwmdriver.set(0)
-			return 'stop'
-		else:
-			if t > 2 * ramp_period:
-				pwmdriver.set(0)
-				return 'stop'
-			t = 2 * ramp_period - t
-	val = int(ramp_peak * 200 * t / ramp_period)
-	pwmdriver.set(val)
-	return 'start'
-
-@app.callback(
-	Output('start-ramp', 'disabled', allow_duplicate=True),
-	Output('ramp-interval', 'disabled', allow_duplicate=True),
-	Output('pwm-slider', 'disabled', allow_duplicate=True),
-	Input('ramp-state', 'data'),
-	prevent_initial_call=True
-)
-def stop_ramp(state):
-	if state == 'stop':
-		return False, True, False
+	ramp_stop = False
+	ramp_done = False
+	ramp_val = 0
+	if ramp_thread is not None:
+		ramp_thread.join()
+		ramp_thread = None
+	ramp_thread = threading.Thread(target=run_ramp)
+	ramp_thread.start()
 	return True, False, True
+
+def run_ramp():
+	global ramp_peak, ramp_steps, ramp_period, ramp_stop, ramp_done, ramp_val, pwmdriver
+	start = time.time()
+	while True:
+		if ramp_stop:
+			break
+		if time.time() - start < ramp_period:
+			continue
+		if ramp_val > ramp_peak:
+			break
+		pwmdriver.set(ramp_val)
+		ramp_val += ramp_peak / ramp_steps
+		start = time.time()
+	pwmdriver.set(0)
+	ramp_done = True
+
+@app.callback(
+	Output('start-ramp', 'disabled'),
+	Output('ramp-interval', 'disabled'),
+	Output('pwm-slider', 'disabled'),
+	Input('stop-ramp', 'n_clicks'),
+	prevent_initial_call=True
+)
+def stop_ramp(n_clicks):
+	global ramp_stop
+	ramp_stop = True
+	while not ramp_done:
+		time.sleep(0.1)
+	return False, True, False
 
 def get_curval(val):
 	if val is None:
