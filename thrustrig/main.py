@@ -113,13 +113,7 @@ def create_app():
 		html.Br(),
 		dbc.Row([
 			dbc.Col(html.Label('PWM Value: '), style={'text-align': 'right'}),
-			dbc.Col(dcc.Slider(id='pwm-slider', min=0, max=200, step=1, value=0, marks={
-					0: '0',
-					50: '50',
-					100: '100',
-					150: '150',
-					200: '200',
-				}, disabled=True)),
+			dbc.Col(dcc.Slider(id='pwm-slider', min=1000, max=2000, step=50, value=0, marks={v: str(v) for v in (1000, 2050, 50)}, disabled=True)),
 			dbc.Col(html.Label('0', id='pwm-val', style={'display': 'inline-block', 'margin-left': '10px'})),
 		], align='center'),
 		html.Br(),
