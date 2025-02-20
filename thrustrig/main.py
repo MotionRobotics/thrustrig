@@ -113,14 +113,14 @@ def create_app():
 		html.Br(),
 		dbc.Row([
 			dbc.Col(html.Label('PWM Value: '), style={'text-align': 'right'}),
-			dbc.Col(dcc.Slider(id='pwm-slider', min=1000, max=2000, step=50, value=0, marks={v: str(v) for v in (1000, 2050, 50)}, disabled=True)),
+			dbc.Col(dcc.Slider(id='pwm-slider', min=1000, max=2000, step=50, value=0, marks={v: str(v) for v in range(1000, 2050, 50)}, disabled=True)),
 			dbc.Col(html.Label('0', id='pwm-val', style={'display': 'inline-block', 'margin-left': '10px'})),
 		], align='center'),
 		html.Br(),
 		dbc.Row([
 			# PWM Ramp driver
 			dbc.Col([html.Label('PWM Ramp: ', style={'font-size': '1.5em'})], style={'text-align': 'right'}),
-			dbc.Col([html.Label('Peak (0-200): ')], style={'text-align': 'right'}),
+			dbc.Col([html.Label('Peak (1000-2000): ')], style={'text-align': 'right'}),
 			dbc.Col([dcc.Input(id='pwm-peak', type='number', value=200, persistence=True)]),
 			dbc.Col([html.Label('Step size: ')], style={'text-align': 'right'}),
 			dbc.Col([dcc.Input(id='pwm-steps', type='number', value=20, persistence=True)]),
@@ -343,7 +343,7 @@ def create_app():
 			for sensor in sensors: sensor.close()
 			sensors = []
 			if pwmdriver is not None:
-				pwmdriver.set(0)
+				pwmdriver.set(1000)
 				time.sleep(0.1)
 				pwmdriver.close()
 				del pwmdriver
@@ -405,7 +405,7 @@ def create_app():
 		if pwmdriver is None:
 			return 0, '0'
 		pwmdriver.set(val)
-		return val, str(val * 10)
+		return val, str(val)
 
 	@app.callback(
 		Output('start-ramp', 'disabled', allow_duplicate=True),
@@ -424,6 +424,8 @@ def create_app():
 		period
 		):
 		global pwmdriver
+		if pwmdriver is None:
+			return True, True, True
 		if pwmdriver.ramp_active:
 			pwmdriver.stop_ramp()
 		pwmdriver.ramp(peak, steps, period)
