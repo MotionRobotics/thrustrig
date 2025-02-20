@@ -128,7 +128,7 @@ def create_app():
 			dbc.Col([dcc.Input(id='pwm-period', type='number', value=1, persistence=True)]),
 			dbc.Col([html.Button('Start', id='start-ramp', n_clicks=0, className='fancy-button')]),
 			dbc.Col([html.Button('Stop', id='stop-ramp', n_clicks=0, className='fancy-button')]),
-			dcc.Interval(id='ramp-interval', interval=250, n_intervals=0, disabled=True),
+			dcc.Interval(id='ramp-interval', interval=250, n_intervals=0),
 		], align='center'),
 		html.Br(),
 		html.Div([
