@@ -404,7 +404,7 @@ def create_app():
 	def update_pwm(val):
 		global pwmdriver
 		if pwmdriver is None:
-			return 0, '0'
+			return 1000, '1000'
 		pwmdriver.set(val)
 		return val, str(val)
 
@@ -455,6 +455,8 @@ def create_app():
 	)
 	def update_ramp(n_intervals):
 		global pwmdriver
+		if pwmdriver is None:
+			return True, True, False, '1000'
 		if pwmdriver.ramp_active:
 			return True, True, False, str(pwmdriver.val)
 		return False, False, True, str(pwmdriver.val)

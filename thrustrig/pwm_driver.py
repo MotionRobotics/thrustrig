@@ -48,6 +48,7 @@ class PWMDriver:
 
 		self.ramp_active = True
 		if self.enabled():
+			print(f"ramp {peak} {step} {period}")
 			data = f"ramp {peak} {step} {period}\n".encode()
 			self.ser.write(data)
    
@@ -56,6 +57,7 @@ class PWMDriver:
 	def stop_ramp(self):
 		if self.ramp_active:
 			if self.enabled():
+				print("stop")
 				data = "stop \n".encode()
 				self.ser.write(data)
 			self.ramp_active = False
