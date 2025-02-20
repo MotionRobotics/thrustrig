@@ -114,7 +114,7 @@ def create_app():
 		dbc.Row([
 			dbc.Col(html.Label('PWM Value: '), style={'text-align': 'right'}),
 			dbc.Col(dcc.Slider(id='pwm-slider', min=1000, max=2000, step=50, value=0, marks={v: str(v) for v in range(1000, 2050, 50)}, disabled=True)),
-			dbc.Col(html.Label('0', id='pwm-val', style={'display': 'inline-block', 'margin-left': '10px'})),
+			dbc.Col(html.Label('1000', id='pwm-val', style={'display': 'inline-block', 'margin-left': '10px'})),
 		], align='center'),
 		html.Br(),
 		dbc.Row([
@@ -327,14 +327,14 @@ def create_app():
 			except serial.SerialException as e:
 				sensors = []
 				pwmdriver = None
-				return 'Start', 'fancy-button', True, True, 0, '0', True, True, f'Error opening serial port: {e.strerror}', True
+				return 'Start', 'fancy-button', True, True, 1000, '1000', True, True, f'Error opening serial port: {e.strerror}', True
 			except ValueError:
 				sensors = []
 				pwmdriver = None
-				return 'Start', 'fancy-button', True, True, 0, '0', True, True, 'Check path to sigrok-cli', True
+				return 'Start', 'fancy-button', True, True, 1000, '1000', True, True, 'Check path to sigrok-cli', True
 			collect_thread = threading.Thread(target=collect_data)
 			collect_thread.start()
-			return 'Stop', 'hide', False, False, 0, '0', False, True, '', False
+			return 'Stop', 'hide', False, False, 1000, '1000', False, True, '', False
 		else:
 			stop_thread = True
 			if collect_thread is not None:
@@ -344,12 +344,14 @@ def create_app():
 			for sensor in sensors: sensor.close()
 			sensors = []
 			if pwmdriver is not None:
+				if pwmdriver.ramp_active:
+					pwmdriver.stop_ramp()
 				pwmdriver.set(1000)
 				time.sleep(0.1)
 				pwmdriver.close()
 				del pwmdriver
 				pwmdriver = None
-			return 'Start', 'fancy-button', True, True, 0, '0', True, True, '', False
+			return 'Start', 'fancy-button', True, True, 1000, '1000', True, True, '', False
 
 	# Callback to close the error modal
 	@app.callback(
@@ -457,6 +459,7 @@ def create_app():
 		global pwmdriver
 		if pwmdriver is None:
 			return True, True, False, '1000'
+		print(pwmdriver.val)
 		if pwmdriver.ramp_active:
 			return True, True, False, str(pwmdriver.val)
 		return False, False, True, str(pwmdriver.val)

@@ -48,8 +48,8 @@ class PWMDriver:
 
 		self.ramp_active = True
 		if self.enabled():
-			print(f"ramp {peak} {step} {period}")
-			data = f"ramp {peak} {step} {period}\n".encode()
+			print(f"ramp {peak} {step} {period*1000}")
+			data = f"ramp {peak} {step} {period*1000}\n".encode()
 			self.ser.write(data)
    
 		return True
