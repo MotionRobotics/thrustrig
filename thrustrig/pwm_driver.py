@@ -13,6 +13,7 @@ class PWMDriver:
 		self.t = None
 		self.val = 0
 		self.stop = False
+		self.ramp_active = False
   
 	def enabled(self):
 		return self.ser is not None
@@ -25,14 +26,49 @@ class PWMDriver:
 		self.t.start()
 
 	def set(self, val):
-		if val < 0 or val > 200:
+		if self.ramp_active:
+			return False
+		if val < 1000 or val > 2000:
 			return False
 		self.val = val
+		if self.enabled():
+			data = f"set {val}\n".encode()
+			self.ser.write(data)
 		return True
+
+	def ramp(self, peak, step, period):
+		if self.ramp_active:
+			return False
+		if peak < 1000 or peak > 2000:
+			return False
+		if step < 0:
+			return False
+		if period < 0:
+			return False
+
+		self.ramp_active = True
+		if self.enabled():
+			data = f"ramp {peak} {step} {period}\n".encode()
+			self.ser.write(data)
+   
+		return True
+
+	def stop_ramp(self):
+		if self.ramp_active:
+			if self.enabled():
+				data = "stop \n".encode()
+				self.ser.write(data)
+			self.ramp_active = False
+			return True
 
 	def loop(self):
 		while not self.stop:
-			self.ser.write(self.val.to_bytes(1, 'big'))
+			if self.ser.in_waiting > 0:
+				line = self.ser.readline().decode().strip()
+				if line.startswith("PWM: "):
+					self.val = int(line[5:])
+				elif line == "Ramp complete":
+					self.ramp_active = False
 			time.sleep(0.01)
 
 	def flush(self):

@@ -85,14 +85,6 @@ with open(tmpfile, 'w') as f:
 stop_thread = False
 last_ts = None
 
-ramp_peak = 0
-ramp_steps = 0
-ramp_period = 0
-ramp_stop = False
-ramp_done = False
-ramp_val = 0
-ramp_thread = None
-
 sigchk = {
 	'ok': ({'color': 'green'}, 'bi bi-check-circle-fill me-2'),
 	'err': ({'color': 'red'}, 'bi bi-exclamation-triangle-fill me-2')
@@ -422,7 +414,6 @@ def create_app():
 
 	@app.callback(
 		Output('start-ramp', 'disabled', allow_duplicate=True),
-		Output('ramp-interval', 'disabled', allow_duplicate=True),
 		Output('pwm-slider', 'disabled', allow_duplicate=True),
 		Input('start-ramp', 'n_clicks'),
 		State('pwm-peak', 'value'),
@@ -436,67 +427,36 @@ def create_app():
 		steps,
 		period
 		):
-		global ramp_peak, ramp_steps, ramp_period, ramp_stop, ramp_done, ramp_val, ramp_thread
-		if ramp_thread is not None:
-			ramp_stop = True
-			ramp_thread.join()
-			ramp_thread = None
-		ramp_peak = peak
-		ramp_steps = steps
-		ramp_period = period
-		ramp_stop = False
-		ramp_done = False
-		ramp_val = 0
-		ramp_thread = threading.Thread(target=run_ramp)
-		ramp_thread.start()
-		return True, False, True
-
-	def run_ramp():
-		global ramp_peak, ramp_steps, ramp_period, ramp_stop, ramp_done, ramp_val, pwmdriver
-		start = time.time()
-		while True:
-			if ramp_stop:
-				break
-			if time.time() - start < ramp_period:
-				continue
-			start = time.time()
-			if ramp_val > ramp_peak:
-				break
-			pwmdriver.set(int(ramp_val))
-			ramp_val += ramp_steps
-		pwmdriver.set(0)
-		ramp_done = True
+		global pwmdriver
+		if pwmdriver.ramp_active:
+			pwmdriver.stop_ramp()
+		pwmdriver.ramp(peak, steps, period)
+		return True, True
 
 	@app.callback(
 		Output('start-ramp', 'disabled', allow_duplicate=True),
-		Output('ramp-interval', 'disabled', allow_duplicate=True),
 		Output('pwm-slider', 'disabled', allow_duplicate=True),
 		Input('stop-ramp', 'n_clicks'),
 		prevent_initial_call=True
 	)
 	def stop_ramp(n_clicks):
-		global ramp_stop
-		ramp_stop = True
-		while not ramp_done:
-			time.sleep(0.1)
-		ramp_thread.join()
-		ramp_stop = False
-		return False, True, False
+		global pwmdriver
+		pwmdriver.stop_ramp()
+		return False, False
 
 	# Callback to update the PWM value
 	@app.callback(
 		Output('start-ramp', 'disabled', allow_duplicate=True),
-		Output('ramp-interval', 'disabled', allow_duplicate=True),
 		Output('pwm-slider', 'disabled', allow_duplicate=True),
 		Output('pwm-val', 'children', allow_duplicate=True),
 		Input('ramp-interval', 'n_intervals'),
 		prevent_initial_call=True
 	)
 	def update_ramp(n_intervals):
-		global ramp_val, ramp_done
-		if ramp_done:
-			return False, True, False, str(ramp_val * 10)
-		return True, False, True, str(ramp_val * 10)
+		global pwmdriver
+		if pwmdriver.ramp_active:
+			return False, False, str(pwmdriver.val)
+		return True, True, str(pwmdriver.val)
 
 	def get_curval(val):
 		if val is None:
