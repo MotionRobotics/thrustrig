@@ -128,7 +128,7 @@ def create_app():
 			dbc.Col([dcc.Input(id='pwm-period', type='number', value=1, persistence=True)]),
 			dbc.Col([html.Button('Start', id='start-ramp', n_clicks=0, className='fancy-button')]),
 			dbc.Col([html.Button('Stop', id='stop-ramp', n_clicks=0, className='fancy-button')]),
-			dcc.Interval(id='ramp-interval', interval=250, n_intervals=0),
+			dcc.Interval(id='ramp-interval', interval=250, n_intervals=0, disabled=True),
 		], align='center'),
 		html.Br(),
 		html.Div([
@@ -287,6 +287,7 @@ def create_app():
 		Output('pwm-slider', 'disabled'),
 		Output('pwm-slider', 'value', allow_duplicate=True),
 		Output('pwm-val', 'children', allow_duplicate=True),
+		Output('start-ramp', 'disabled', allow_duplicate=True),
 		Output('error-msg', 'children', allow_duplicate=True),
 		Output('error-modal', 'is_open', allow_duplicate=True),
 		Input('start-stop', 'n_clicks'),
@@ -325,14 +326,14 @@ def create_app():
 			except serial.SerialException as e:
 				sensors = []
 				pwmdriver = None
-				return 'Start', 'fancy-button', True, True, 0, '0', f'Error opening serial port: {e.strerror}', True
+				return 'Start', 'fancy-button', True, True, 0, '0', True, f'Error opening serial port: {e.strerror}', True
 			except ValueError:
 				sensors = []
 				pwmdriver = None
-				return 'Start', 'fancy-button', True, True, 0, '0', 'Check path to sigrok-cli', True
+				return 'Start', 'fancy-button', True, True, 0, '0', True, 'Check path to sigrok-cli', True
 			collect_thread = threading.Thread(target=collect_data)
 			collect_thread.start()
-			return 'Stop', 'hide', False, False, 0, '0', '', False
+			return 'Stop', 'hide', False, False, 0, '0', False, '', False
 		else:
 			stop_thread = True
 			if collect_thread is not None:
@@ -347,7 +348,7 @@ def create_app():
 				pwmdriver.close()
 				del pwmdriver
 				pwmdriver = None
-			return 'Start', 'fancy-button', True, True, 0, '0', '', False
+			return 'Start', 'fancy-button', True, True, 0, '0', True, '', False
 
 	# Callback to close the error modal
 	@app.callback(
@@ -409,6 +410,7 @@ def create_app():
 	@app.callback(
 		Output('start-ramp', 'disabled', allow_duplicate=True),
 		Output('pwm-slider', 'disabled', allow_duplicate=True),
+		Output('ramp-interval', 'disabled', allow_duplicate=True),
 		Input('start-ramp', 'n_clicks'),
 		State('pwm-peak', 'value'),
 		State('pwm-steps', 'value'),
@@ -425,23 +427,25 @@ def create_app():
 		if pwmdriver.ramp_active:
 			pwmdriver.stop_ramp()
 		pwmdriver.ramp(peak, steps, period)
-		return True, True
+		return True, True, False
 
 	@app.callback(
 		Output('start-ramp', 'disabled', allow_duplicate=True),
 		Output('pwm-slider', 'disabled', allow_duplicate=True),
+		Output('ramp-interval', 'disabled', allow_duplicate=True),
 		Input('stop-ramp', 'n_clicks'),
 		prevent_initial_call=True
 	)
 	def stop_ramp(n_clicks):
 		global pwmdriver
 		pwmdriver.stop_ramp()
-		return False, False
+		return False, False, True
 
 	# Callback to update the PWM value
 	@app.callback(
 		Output('start-ramp', 'disabled', allow_duplicate=True),
 		Output('pwm-slider', 'disabled', allow_duplicate=True),
+		Output('ramp-interval', 'disabled', allow_duplicate=True),
 		Output('pwm-val', 'children', allow_duplicate=True),
 		Input('ramp-interval', 'n_intervals'),
 		prevent_initial_call=True
@@ -449,8 +453,8 @@ def create_app():
 	def update_ramp(n_intervals):
 		global pwmdriver
 		if pwmdriver.ramp_active:
-			return False, False, str(pwmdriver.val)
-		return True, True, str(pwmdriver.val)
+			return True, True, False, str(pwmdriver.val)
+		return False, False, True, str(pwmdriver.val)
 
 	def get_curval(val):
 		if val is None:
